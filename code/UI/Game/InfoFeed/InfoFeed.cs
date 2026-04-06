@@ -103,9 +103,16 @@ public partial class InfoFeed : Panel
 			return;
 
 		var karma = MathF.Round( player.BaseKarma );
-		var df = MathF.Round( 100f - player.DamageFactor * 100f );
-		var damageFactor = df == 0 ? $"Your karma is {karma}, you'll deal full damage this round." : $"Your karma is {karma}, you'll deal {df}% reduced damage this round.";
-		AddEntry( damageFactor );
+		var damagePenalty = MathF.Round( 100f - player.DamageFactor * 100f );
+		var speedPenalty = MathF.Round( 100f - player.KarmaSpeedScale * 100f );
+
+		if ( damagePenalty <= 0 && speedPenalty <= 0 )
+		{
+			AddEntry( $"Your karma is {karma}, you'll deal full damage and move at full speed this round." );
+			return;
+		}
+
+		AddEntry( $"Your karma is {karma}, you'll deal {damagePenalty}% reduced damage and move {speedPenalty}% slower this round." );
 	}
 
 	[TTTEvent.Round.End]

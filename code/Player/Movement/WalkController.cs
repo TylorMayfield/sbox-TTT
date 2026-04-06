@@ -6,11 +6,18 @@ namespace TTT;
 
 public partial class WalkController : BaseNetworkable
 {
+	private const float BaseWalkSpeed = 110f;
+	private const float BaseDefaultSpeed = 230f;
+	private const float BaseAcceleration = 10.0f;
+	private const float BaseAirAcceleration = 12f;
+	private const float BaseGroundFriction = 6.5f;
+	private const float BaseAirControl = 20.0f;
+
 	internal HashSet<string> _events;
 	internal HashSet<string> _tags;
 
-	[Net] public float WalkSpeed { get; set; } = 110f;
-	[Net] public float DefaultSpeed { get; set; } = 230f;
+	[Net] public float WalkSpeed { get; set; } = BaseWalkSpeed;
+	[Net] public float DefaultSpeed { get; set; } = BaseDefaultSpeed;
 	[Net] public float Acceleration { get; set; } = 10.0f;
 	[Net] public float AirAcceleration { get; set; } = 12f;
 	[Net] public float FallSoundZ { get; set; } = -30.0f;
@@ -274,7 +281,10 @@ public partial class WalkController : BaseNetworkable
 
 		ClearGroundEntity();
 
-		PreventBhop();
+		if ( !GameManager.BhopEnabled )
+			PreventBhop();
+		else
+			PreventBhop( GameManager.BhopSpeedCapMultiplier );
 
 		var flGroundFactor = 1.0f;
 
@@ -419,6 +429,8 @@ public partial class WalkController : BaseNetworkable
 
 	private void BaseSimulate()
 	{
+		ApplyMovementConfig();
+
 		_tags?.Clear();
 		_events?.Clear();
 
@@ -643,10 +655,13 @@ public partial class WalkController : BaseNetworkable
 	/// <summary>
 	/// Translated code from CS:GO
 	/// </summary>
-	private void PreventBhop()
+	private void PreventBhop( float speedCapMultiplier = 1.1f )
 	{
+		if ( speedCapMultiplier <= 0.0f )
+			return;
+
 		// Speed at which bunny jumping is limited
-		var maxscaledspeed = 1.1f * DefaultSpeed;
+		var maxscaledspeed = speedCapMultiplier * DefaultSpeed;
 		if ( maxscaledspeed <= 0.0f )
 			return;
 
@@ -660,5 +675,25 @@ public partial class WalkController : BaseNetworkable
 		var fraction = maxscaledspeed / spd;
 
 		Player.Velocity *= fraction;
+	}
+
+	private void ApplyMovementConfig()
+	{
+		var karmaSpeedScale = Player?.KarmaSpeedScale ?? 1f;
+		WalkSpeed = BaseWalkSpeed * karmaSpeedScale;
+		DefaultSpeed = BaseDefaultSpeed * karmaSpeedScale;
+		Acceleration = BaseAcceleration;
+		AirAcceleration = BaseAirAcceleration;
+		GroundFriction = BaseGroundFriction;
+		AirControl = BaseAirControl;
+		AutoJump = false;
+
+		if ( !GameManager.BhopEnabled )
+			return;
+
+		AirAcceleration = GameManager.BhopAirAcceleration;
+		AirControl = GameManager.BhopAirControl;
+		GroundFriction = GameManager.BhopGroundFriction;
+		AutoJump = GameManager.BhopAutoJump;
 	}
 }

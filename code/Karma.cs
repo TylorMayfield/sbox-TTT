@@ -21,6 +21,9 @@ public static class Karma
 	[ConVar.Server( "ttt_karma_min", Help = "The minimum karma a player can have before they get kicked.", Saved = true )]
 	public static int MinValue { get; set; } = 500;
 
+	[ConVar.Replicated( "ttt_karma_min_speed_scale", Help = "The slowest movement speed multiplier low-karma players can be reduced to.", Saved = true )]
+	public static float MinSpeedScale { get; set; } = 0.85f;
+
 	public static Dictionary<long, float> SavedPlayerValues { get; private set; } = new();
 
 	public const float CleanBonus = 30;
@@ -74,6 +77,25 @@ public static class Karma
 		return MathF.Exp( -0.69314718f / (baseDiff * half) * plyDiff );
 	}
 
+	public static float GetDamageFactor( float baseKarma )
+	{
+		return KarmaRules.GetDamageFactor( Enabled, baseKarma, StartValue );
+	}
+
+	public static float GetSpeedFactor( float damageFactor )
+	{
+		return KarmaRules.GetSpeedFactor( Enabled, damageFactor, MinSpeedScale );
+	}
+
+	public static void ApplyRoundModifiers( Player player )
+	{
+		if ( !player.IsValid() )
+			return;
+
+		player.DamageFactor = GetDamageFactor( player.BaseKarma );
+		player.KarmaSpeedScale = GetSpeedFactor( player.DamageFactor );
+	}
+
 	[TTTEvent.Player.Spawned]
 	private static void Apply( Player player )
 	{
@@ -81,17 +103,7 @@ public static class Karma
 			return;
 
 		player.TimeUntilClean = 0;
-
-		if ( !Enabled || player.BaseKarma >= StartValue )
-		{
-			player.DamageFactor = 1f;
-			return;
-		}
-
-		var k = player.BaseKarma - StartValue;
-		var damageFactor = 1 + (0.0007f * k) + (-0.000002f * (k * k));
-
-		player.DamageFactor = Math.Clamp( damageFactor, 0.1f, 1f );
+		ApplyRoundModifiers( player );
 	}
 
 

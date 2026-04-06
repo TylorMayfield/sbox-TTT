@@ -54,6 +54,26 @@ public partial class GameManager
 	public static int MinPlayers { get; set; } = 2;
 	#endregion
 
+	#region Movement
+	[ConVar.Replicated( "ttt_bhop_enabled", Help = "Enables bunny hopping friendly movement tuning.", Saved = true )]
+	public static bool BhopEnabled { get; set; } = true;
+
+	[ConVar.Replicated( "ttt_bhop_autojump", Help = "Lets players hold jump to continuously bunny hop.", Saved = true )]
+	public static bool BhopAutoJump { get; set; } = true;
+
+	[ConVar.Replicated( "ttt_bhop_air_acceleration", Help = "Air acceleration used while bhop movement is enabled.", Saved = true )]
+	public static float BhopAirAcceleration { get; set; } = 85f;
+
+	[ConVar.Replicated( "ttt_bhop_air_control", Help = "Air control used while bhop movement is enabled.", Saved = true )]
+	public static float BhopAirControl { get; set; } = 30f;
+
+	[ConVar.Replicated( "ttt_bhop_ground_friction", Help = "Ground friction used while bhop movement is enabled.", Saved = true )]
+	public static float BhopGroundFriction { get; set; } = 4.5f;
+
+	[ConVar.Replicated( "ttt_bhop_speed_cap_multiplier", Help = "Caps hop speed to DefaultSpeed * value. Set to 0 to disable the cap.", Saved = true )]
+	public static float BhopSpeedCapMultiplier { get; set; } = 0f;
+	#endregion
+
 	#region AFK Timers
 	[ConVar.Replicated( "ttt_afk_timer", Help = "The amount of time before a player is forced to being a spectator.", Saved = true )]
 	public static int AFKTimer { get; set; } = 180;

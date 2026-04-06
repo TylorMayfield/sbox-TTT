@@ -93,17 +93,19 @@ public partial class GameManager
 		player.SetRole( roleInfo );
 	}
 
-	[ConCmd.Server( Name = "ttt_setkarma" )]
-	public static void SetKarma( int karma )
+	[ConCmd.Server( Name = "ttt_setkarma", Help = "Sets karma for yourself or the player with the given entity id." )]
+	public static void SetKarma( int karma, int id = 0 )
 	{
 		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
 			return;
 
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		var player = id == 0 ? ConsoleSystem.Caller.Pawn as Player : FindByIndex( id ) as Player;
 		if ( !player.IsValid() )
 			return;
 
 		player.BaseKarma = karma;
+		player.ActiveKarma = karma;
+		Karma.ApplyRoundModifiers( player );
 	}
 
 	[ConCmd.Server( Name = "ttt_force_restart" )]

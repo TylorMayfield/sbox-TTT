@@ -54,7 +54,10 @@ public partial class Player
 	/// The damage factor scales how much damage the player deals, so if it is 0.9
 	/// then the player only deals 90% of his original damage.
 	/// </summary>
+	[Net]
 	public float DamageFactor { get; set; } = 1f;
+	[Net]
+	public float KarmaSpeedScale { get; set; } = 1f;
 	[Net]
 	public float RdmDamageScale { get; set; } = 1f;
 	/// <summary>

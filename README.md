@@ -26,6 +26,13 @@ Body hanging permissions are controlled by the saved server convar `ttt_hang_bod
 Set it to a comma-separated list of role names, type names, or class names such as `traitor,detective`.
 Use `all` or `*` to allow every role to hang bodies.
 
+Movement and bunny hopping are controlled by:
+`ttt_bhop_enabled`, `ttt_bhop_autojump`, `ttt_bhop_air_acceleration`, `ttt_bhop_air_control`, `ttt_bhop_ground_friction`, and `ttt_bhop_speed_cap_multiplier`.
+Set the speed cap multiplier to `0` to fully remove the bhop jump speed cap.
+
+Karma affects both outgoing damage and movement speed.
+The minimum movement speed penalty floor is controlled by `ttt_karma_min_speed_scale`.
+
 Public RDM tribunal voting is controlled by:
 `ttt_tribunal_enabled`, `ttt_tribunal_vote_seconds`, `ttt_tribunal_min_votes`, and `ttt_tribunal_required_ratio`.
 When enabled, open RDM reports can be voted on by the server through the in-game Global Tribunal page.
