@@ -5,7 +5,7 @@
 
 @namespace TTT.UI
 
-@if (Game.LocalClient is null || !Game.LocalClient.IsAdmin)
+@if (!TTT.GameManager.LocalClientHasAdminAccess)
 {
     return;
 }

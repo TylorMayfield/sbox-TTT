@@ -128,4 +128,21 @@ public partial class GameManager
 	[ConVar.Server( "ttt_tribunal_required_ratio", Help = "Vote ratio required for an early guilty or not guilty tribunal verdict.", Saved = true )]
 	public static float TribunalRequiredRatio { get; set; } = 0.6f;
 	#endregion
+
+	#region RDM Punishments
+	[ConVar.Server( "ttt_rdm_guilty_punishments", Help = "Comma-separated punishments for guilty RDM rulings. Supports slay, half_damage, kick, ban.", Saved = true )]
+	public static string RdmGuiltyPunishments { get; set; } = "slay,half_damage";
+
+	[ConVar.Server( "ttt_rdm_slay_rounds", Help = "How many upcoming rounds a guilty player should be slain for.", Saved = true )]
+	public static int RdmSlayRounds { get; set; } = 1;
+
+	[ConVar.Server( "ttt_rdm_damage_scale", Help = "Damage multiplier applied during reduced-damage punishment rounds.", Saved = true )]
+	public static float RdmDamageScale { get; set; } = 0.5f;
+
+	[ConVar.Server( "ttt_rdm_damage_rounds", Help = "How many upcoming rounds reduced-damage punishment should last.", Saved = true )]
+	public static int RdmDamageRounds { get; set; } = 1;
+
+	[ConVar.Server( "ttt_rdm_ban_minutes", Help = "Ban duration used when ban is included in guilty RDM punishments.", Saved = true )]
+	public static int RdmBanMinutes { get; set; } = 60;
+	#endregion
 }

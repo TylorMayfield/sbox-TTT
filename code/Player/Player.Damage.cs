@@ -55,6 +55,8 @@ public partial class Player
 	/// then the player only deals 90% of his original damage.
 	/// </summary>
 	public float DamageFactor { get; set; } = 1f;
+	[Net]
+	public float RdmDamageScale { get; set; } = 1f;
 	/// <summary>
 	/// If a player damages another team member that is "clean" (no active timer),
 	/// they'll end up with time being tacked onto this timer. A player will receive a
@@ -132,6 +134,8 @@ public partial class Player
 		{
 			if ( GameManager.Current.State is not InProgress and not PostRound )
 				return;
+
+			info.Damage *= attacker.RdmDamageScale;
 
 			if ( !info.HasTag( DamageTags.Slash ) )
 				info.Damage *= attacker.DamageFactor;

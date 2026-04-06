@@ -17,6 +17,11 @@ You can checkout devblog update videos on my [YouTube channel](https://www.youtu
 
 ### Server Config
 
+Admin access can now be managed with a local `admins.json` allowlist in the game data folder.
+The game also still honors s&box engine admins, but the in-game admin console and admin commands now accept either source.
+You can manage the local allowlist with:
+`ttt_admin_add <steamid64>`, `ttt_admin_remove <steamid64>`, and `ttt_admin_list`
+
 Body hanging permissions are controlled by the saved server convar `ttt_hang_body_roles`.
 Set it to a comma-separated list of role names, type names, or class names such as `traitor,detective`.
 Use `all` or `*` to allow every role to hang bodies.
@@ -24,6 +29,10 @@ Use `all` or `*` to allow every role to hang bodies.
 Public RDM tribunal voting is controlled by:
 `ttt_tribunal_enabled`, `ttt_tribunal_vote_seconds`, `ttt_tribunal_min_votes`, and `ttt_tribunal_required_ratio`.
 When enabled, open RDM reports can be voted on by the server through the in-game Global Tribunal page.
+
+Guilty RDM punishments are controlled by:
+`ttt_rdm_guilty_punishments`, `ttt_rdm_slay_rounds`, `ttt_rdm_damage_scale`, `ttt_rdm_damage_rounds`, and `ttt_rdm_ban_minutes`.
+Supported punishment values are `slay`, `half_damage`, `kick`, and `ban`.
 
 ## [Contributing](https://github.com/CigarLounge/sbox-TTT/wiki/Contributing)
 

@@ -85,15 +85,30 @@ public sealed class ModerationPlayerInfo
 	public int Karma { get; set; }
 }
 
+public sealed class PunishmentRecord
+{
+	public long SteamId { get; set; }
+	public int PendingSlayRounds { get; set; }
+	public int PendingDamageRounds { get; set; }
+	public int DamagePenaltyAppliedRound { get; set; } = -1;
+	public int SlayAppliedRound { get; set; } = -1;
+}
+
 public partial class GameManager : Sandbox.GameManager
 {
+	public static readonly HashSet<long> AdminSteamIds = new();
 	public static readonly List<BannedClient> BannedClients = new();
 	public static readonly List<ModerationLogEntry> ModerationLogs = new();
 	public static readonly List<RdmReport> RdmReports = new();
+	public static readonly List<PunishmentRecord> PunishmentRecords = new();
 
+	public const string AdminFilePath = "admins.json";
 	public const string BanFilePath = "bans.json";
 	public const string ModerationLogFilePath = "moderation_logs.json";
 	public const string RdmReportFilePath = "rdm_reports.json";
+	public const string PunishmentFilePath = "rdm_punishments.json";
+
+	public static bool LocalClientHasAdminAccess { get; private set; }
 
 	private const int MaxModerationLogs = 300;
 	private const int MaxRdmReports = 150;
@@ -123,11 +138,15 @@ public partial class GameManager : Sandbox.GameManager
 
 	internal static void LoadModerationData()
 	{
+		AdminSteamIds.Clear();
 		BannedClients.Clear();
 		RdmReports.Clear();
 		ModerationLogs.Clear();
+		PunishmentRecords.Clear();
 
+		LoadAdminClients();
 		LoadBannedClients();
+		LoadPunishmentRecords();
 
 		var reports = FileSystem.Data.ReadJson<List<RdmReport>>( RdmReportFilePath );
 		if ( !reports.IsNullOrEmpty() )
@@ -143,9 +162,21 @@ public partial class GameManager : Sandbox.GameManager
 
 	internal static void SaveModerationData()
 	{
+		FileSystem.Data.WriteJson( AdminFilePath, AdminSteamIds.ToList() );
 		FileSystem.Data.WriteJson( BanFilePath, BannedClients );
 		FileSystem.Data.WriteJson( RdmReportFilePath, RdmReports );
 		FileSystem.Data.WriteJson( ModerationLogFilePath, ModerationLogs );
+		FileSystem.Data.WriteJson( PunishmentFilePath, PunishmentRecords );
+	}
+
+	private static void LoadAdminClients()
+	{
+		var clients = FileSystem.Data.ReadJson<List<long>>( AdminFilePath );
+		if ( clients.IsNullOrEmpty() )
+			return;
+
+		foreach ( var steamId in clients )
+			AdminSteamIds.Add( steamId );
 	}
 
 	private static void LoadBannedClients()
@@ -155,14 +186,56 @@ public partial class GameManager : Sandbox.GameManager
 			BannedClients.AddRange( clients );
 	}
 
-	private static bool HasAdminAccess( IClient client )
+	private static void LoadPunishmentRecords()
 	{
-		return client is null || (client.IsValid() && client.IsAdmin);
+		var records = FileSystem.Data.ReadJson<List<PunishmentRecord>>( PunishmentFilePath );
+		if ( !records.IsNullOrEmpty() )
+			PunishmentRecords.AddRange( records );
+	}
+
+	public static bool HasAdminAccess( IClient client )
+	{
+		if ( client is null )
+			return true;
+
+		return client.IsValid() && (client.IsAdmin || AdminSteamIds.Contains( client.SteamId ));
 	}
 
 	private static IEnumerable<IClient> GetAdminClients()
 	{
 		return Game.Clients.Where( HasAdminAccess );
+	}
+
+	private static void SyncAdminAccess( IClient client )
+	{
+		if ( client is null )
+			return;
+
+		ReceiveAdminAccess( To.Single( client ), HasAdminAccess( client ) );
+	}
+
+	private static void SyncAdminAccessToAllClients()
+	{
+		foreach ( var client in Game.Clients )
+			SyncAdminAccess( client );
+	}
+
+	private static void ApplyCurrentPunishmentState( Player player )
+	{
+		if ( !player.IsValid() )
+			return;
+
+		player.RdmDamageScale = 1f;
+
+		if ( GameManager.Current?.State is not InProgress )
+			return;
+
+		var record = PunishmentRecords.FirstOrDefault( entry => entry.SteamId == player.SteamId );
+		if ( record is null )
+			return;
+
+		if ( record.DamagePenaltyAppliedRound == GameManager.Current.TotalRoundsPlayed )
+			player.RdmDamageScale = Math.Clamp( GameManager.RdmDamageScale, 0.05f, 1f );
 	}
 
 	private static Player FindPlayerBySteamId( long steamId )
@@ -175,6 +248,30 @@ public partial class GameManager : Sandbox.GameManager
 	private static string GetRoleName( Player player )
 	{
 		return player?.Role?.Title ?? "Unknown";
+	}
+
+	private static PunishmentRecord GetOrCreatePunishmentRecord( long steamId )
+	{
+		var record = PunishmentRecords.FirstOrDefault( entry => entry.SteamId == steamId );
+		if ( record is not null )
+			return record;
+
+		record = new PunishmentRecord { SteamId = steamId };
+		PunishmentRecords.Add( record );
+		return record;
+	}
+
+	private static void CleanupPunishmentRecords()
+	{
+		PunishmentRecords.RemoveAll( record => record.PendingSlayRounds <= 0 && record.PendingDamageRounds <= 0 );
+	}
+
+	private static HashSet<string> GetConfiguredPunishments()
+	{
+		return GameManager.RdmGuiltyPunishments?
+			.Split( ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )
+			.Select( value => value.ToLowerInvariant() )
+			.ToHashSet() ?? new HashSet<string>();
 	}
 
 	private static void AddModerationLog( string category, string summary, string details = "", Player actor = null, Player target = null )
@@ -255,10 +352,86 @@ public partial class GameManager : Sandbox.GameManager
 		ReceiveTribunalSnapshot( To.Everyone, BuildTribunalReportsJson() );
 	}
 
+	private static void ApplyBanBySteamId( long steamId, int minutes, string reason )
+	{
+		var target = FindPlayerBySteamId( steamId );
+		if ( target.IsValid() )
+		{
+			target.Client.Ban( minutes, reason );
+			return;
+		}
+
+		BannedClients.RemoveAll( client => client.SteamId == steamId );
+		BannedClients.Add( new BannedClient
+		{
+			SteamId = steamId,
+			Duration = minutes <= 0 ? DateTime.MaxValue : DateTime.Now.AddMinutes( minutes ),
+			Reason = reason
+		} );
+	}
+
+	private static void ApplyConfiguredRdmPunishments( RdmReport report, string source )
+	{
+		var punishments = GetConfiguredPunishments();
+		if ( punishments.Count == 0 )
+			return;
+
+		var accused = FindPlayerBySteamId( report.AccusedSteamId );
+		var summary = new List<string>();
+
+		if ( punishments.Contains( "slay" ) && GameManager.RdmSlayRounds > 0 )
+		{
+			var record = GetOrCreatePunishmentRecord( report.AccusedSteamId );
+			record.PendingSlayRounds += GameManager.RdmSlayRounds;
+			summary.Add( $"slay x{GameManager.RdmSlayRounds}" );
+		}
+
+		if ( punishments.Contains( "half_damage" ) && GameManager.RdmDamageRounds > 0 )
+		{
+			var record = GetOrCreatePunishmentRecord( report.AccusedSteamId );
+			record.PendingDamageRounds += GameManager.RdmDamageRounds;
+			summary.Add( $"damage x{GameManager.RdmDamageRounds} @ {GameManager.RdmDamageScale:0.##}" );
+
+			if ( accused.IsValid() )
+				accused.RdmDamageScale = Math.Clamp( GameManager.RdmDamageScale, 0.05f, 1f );
+		}
+
+		if ( punishments.Contains( "kick" ) && accused.IsValid() )
+		{
+			summary.Add( "kick" );
+			accused.Client.Kick();
+		}
+
+		if ( punishments.Contains( "ban" ) )
+		{
+			var minutes = Math.Max( GameManager.RdmBanMinutes, 0 );
+			summary.Add( minutes == 0 ? "permaban" : $"ban {minutes}m" );
+			ApplyBanBySteamId( report.AccusedSteamId, minutes, $"RDM guilty verdict via {source}" );
+		}
+
+		if ( summary.Count == 0 )
+			return;
+
+		AddModerationLog(
+			"Punishment",
+			$"Applied RDM punishments to {report.AccusedName}",
+			$"Source: {source}; Punishments: {string.Join( ", ", summary )}"
+		);
+
+		CleanupPunishmentRecords();
+		SaveModerationData();
+	}
+
 	[ClientRpc]
 	private static void ReceiveModerationSnapshot( string reportsJson, string logsJson, string playersJson )
 	{
 		UI.AdminPage.ReceiveSnapshot( reportsJson, logsJson, playersJson );
+	}
+
+	[ClientRpc]
+	private static void ReceiveAdminAccess( bool hasAccess )
+	{
+		LocalClientHasAdminAccess = hasAccess;
 	}
 
 	[ClientRpc]
@@ -267,7 +440,7 @@ public partial class GameManager : Sandbox.GameManager
 		UI.TribunalPage.ReceiveSnapshot( reportsJson );
 	}
 
-	[ConCmd.Admin( Name = "ttt_admin_refresh", Help = "Refreshes the moderation admin console snapshot." )]
+	[ConCmd.Server( Name = "ttt_admin_refresh", Help = "Refreshes the moderation admin console snapshot." )]
 	public static void RequestModerationSnapshot()
 	{
 		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
@@ -400,7 +573,7 @@ public partial class GameManager : Sandbox.GameManager
 		UI.TextChat.AddInfoEntry( To.Single( ConsoleSystem.Caller ), $"You voted {(isGuiltyVote ? "guilty" : "not guilty")} on report #{report.Id}." );
 	}
 
-	[ConCmd.Admin( Name = "ttt_rdm_claim", Help = "Claims an RDM report." )]
+	[ConCmd.Server( Name = "ttt_rdm_claim", Help = "Claims an RDM report." )]
 	public static void ClaimRdmReport( int reportId )
 	{
 		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
@@ -425,13 +598,13 @@ public partial class GameManager : Sandbox.GameManager
 		PushTribunalSnapshot();
 	}
 
-	[ConCmd.Admin( Name = "ttt_rdm_resolve", Help = "Resolves an RDM report." )]
+	[ConCmd.Server( Name = "ttt_rdm_resolve", Help = "Resolves an RDM report." )]
 	public static void ResolveRdmReport( int reportId, string notes = "" )
 	{
 		UpdateRdmReportStatus( reportId, RdmReportStatus.Resolved, notes );
 	}
 
-	[ConCmd.Admin( Name = "ttt_rdm_dismiss", Help = "Dismisses an RDM report." )]
+	[ConCmd.Server( Name = "ttt_rdm_dismiss", Help = "Dismisses an RDM report." )]
 	public static void DismissRdmReport( int reportId, string notes = "" )
 	{
 		UpdateRdmReportStatus( reportId, RdmReportStatus.Dismissed, notes );
@@ -453,6 +626,9 @@ public partial class GameManager : Sandbox.GameManager
 		report.ClosedAt = DateTime.UtcNow;
 		report.TribunalEndsAt = null;
 
+		if ( status == RdmReportStatus.Resolved )
+			ApplyConfiguredRdmPunishments( report, "admin" );
+
 		AddModerationLog(
 			"Admin Action",
 			$"{ConsoleSystem.Caller.Name} marked RDM report #{report.Id} as {status}",
@@ -464,27 +640,17 @@ public partial class GameManager : Sandbox.GameManager
 		PushTribunalSnapshot();
 	}
 
-	[ConCmd.Admin( Name = "ttt_ban", Help = "Ban the client with the following steam id." )]
+	[ConCmd.Server( Name = "ttt_ban", Help = "Ban the client with the following steam id." )]
 	public static void BanPlayer( string rawSteamId, int minutes = default, string reason = "" )
 	{
+		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		if ( !long.TryParse( rawSteamId, out var steamId ) )
 			return;
 
 		var target = FindPlayerBySteamId( steamId );
-		if ( target.IsValid() )
-		{
-			target.Client.Ban( minutes, reason );
-		}
-		else
-		{
-			BannedClients.RemoveAll( client => client.SteamId == steamId );
-			BannedClients.Add( new BannedClient
-			{
-				SteamId = steamId,
-				Duration = minutes == default ? DateTime.MaxValue : DateTime.Now.AddMinutes( minutes ),
-				Reason = reason
-			} );
-		}
+		ApplyBanBySteamId( steamId, minutes, reason );
 
 		AddModerationLog(
 			"Admin Action",
@@ -497,9 +663,12 @@ public partial class GameManager : Sandbox.GameManager
 		PushTribunalSnapshot();
 	}
 
-	[ConCmd.Admin( Name = "ttt_ban_remove", Help = "Remove the ban on a client using a steam id." )]
+	[ConCmd.Server( Name = "ttt_ban_remove", Help = "Remove the ban on a client using a steam id." )]
 	public static void RemoveBanWithSteamId( string rawSteamId )
 	{
+		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		if ( !long.TryParse( rawSteamId, out var steamId ) )
 			return;
 
@@ -515,9 +684,12 @@ public partial class GameManager : Sandbox.GameManager
 		PushTribunalSnapshot();
 	}
 
-	[ConCmd.Admin( Name = "ttt_kick", Help = "Kick the client with the following steam id." )]
+	[ConCmd.Server( Name = "ttt_kick", Help = "Kick the client with the following steam id." )]
 	public static void KickPlayer( string rawSteamId )
 	{
+		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		if ( !long.TryParse( rawSteamId, out var steamId ) )
 			return;
 
@@ -610,6 +782,7 @@ public partial class GameManager : Sandbox.GameManager
 			case TribunalResolution.Guilty:
 				report.TribunalVerdict = TribunalVerdict.Guilty;
 				report.Status = RdmReportStatus.Resolved;
+				ApplyConfiguredRdmPunishments( report, "tribunal" );
 				break;
 			case TribunalResolution.NotGuilty:
 				report.TribunalVerdict = TribunalVerdict.NotGuilty;
@@ -647,5 +820,106 @@ public partial class GameManager : Sandbox.GameManager
 		SaveModerationData();
 		PushModerationSnapshotToAdmins();
 		PushTribunalSnapshot();
+	}
+
+	[TTTEvent.Round.Start]
+	private static void ApplyRoundPunishments()
+	{
+		if ( !Game.IsServer || GameManager.Current.State is not InProgress )
+			return;
+
+		var round = GameManager.Current.TotalRoundsPlayed;
+		var changed = false;
+
+		foreach ( var player in Game.Clients.Select( client => client.Pawn as Player ).Where( player => player.IsValid() ) )
+		{
+			player.RdmDamageScale = 1f;
+
+			var record = PunishmentRecords.FirstOrDefault( entry => entry.SteamId == player.SteamId );
+			if ( record is null )
+				continue;
+
+			if ( record.PendingDamageRounds > 0 && record.DamagePenaltyAppliedRound != round )
+			{
+				player.RdmDamageScale = Math.Clamp( GameManager.RdmDamageScale, 0.05f, 1f );
+				record.PendingDamageRounds--;
+				record.DamagePenaltyAppliedRound = round;
+				changed = true;
+				UI.TextChat.AddInfoEntry( To.Single( player.Client ), $"RDM punishment: your damage is reduced to {(player.RdmDamageScale * 100):n0}% this round." );
+			}
+
+			if ( record.PendingSlayRounds > 0 && record.SlayAppliedRound != round )
+			{
+				record.PendingSlayRounds--;
+				record.SlayAppliedRound = round;
+				changed = true;
+
+				if ( player.IsAlive )
+				{
+					player.TakeDamage( DamageInfo.Generic( player.Health ).WithAttacker( player ) );
+					UI.TextChat.AddInfoEntry( To.Single( player.Client ), "RDM punishment: you have been slain for this round." );
+				}
+			}
+		}
+
+		if ( !changed )
+			return;
+
+		CleanupPunishmentRecords();
+		SaveModerationData();
+	}
+
+	[ConCmd.Server( Name = "ttt_admin_add", Help = "Adds a SteamID to the local admin allowlist." )]
+	public static void AddAdmin( string rawSteamId )
+	{
+		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
+		if ( !long.TryParse( rawSteamId, out var steamId ) )
+			return;
+
+		if ( !AdminSteamIds.Add( steamId ) )
+			return;
+
+		AddModerationLog( "Admin Action", $"{ConsoleSystem.Caller?.Name ?? "Server Console"} added admin {rawSteamId}" );
+		SaveModerationData();
+		SyncAdminAccessToAllClients();
+		PushModerationSnapshotToAdmins();
+	}
+
+	[ConCmd.Server( Name = "ttt_admin_remove", Help = "Removes a SteamID from the local admin allowlist." )]
+	public static void RemoveAdmin( string rawSteamId )
+	{
+		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
+		if ( !long.TryParse( rawSteamId, out var steamId ) )
+			return;
+
+		if ( !AdminSteamIds.Remove( steamId ) )
+			return;
+
+		AddModerationLog( "Admin Action", $"{ConsoleSystem.Caller?.Name ?? "Server Console"} removed admin {rawSteamId}" );
+		SaveModerationData();
+		SyncAdminAccessToAllClients();
+		PushModerationSnapshotToAdmins();
+	}
+
+	[ConCmd.Server( Name = "ttt_admin_list", Help = "Lists local admin SteamIDs in the server console." )]
+	public static void ListAdmins()
+	{
+		if ( !HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
+		Log.Info( $"Local admins: {(AdminSteamIds.Count == 0 ? "(none)" : string.Join( ", ", AdminSteamIds.OrderBy( id => id ) ))}" );
+	}
+
+	[GameEvent.Server.ClientJoined]
+	private static void OnClientJoinedModeration( ClientJoinedEvent e )
+	{
+		SyncAdminAccess( e.Client );
+
+		if ( e.Client.Pawn is Player player )
+			ApplyCurrentPunishmentState( player );
 	}
 }

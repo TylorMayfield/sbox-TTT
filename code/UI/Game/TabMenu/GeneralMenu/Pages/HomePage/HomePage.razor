@@ -9,7 +9,7 @@
 	{
 		<button class="alt" icon="gavel" @onclick=@GoToTribunalPage>Global Tribunal</button>
 	}
-	@if (Game.LocalClient is not null && Game.LocalClient.IsAdmin)
+	@if (TTT.GameManager.LocalClientHasAdminAccess)
 	{
 		<button class="alt" icon="admin_panel_settings" @onclick=@GoToAdminPage>Admin Console</button>
 	}
@@ -58,7 +58,7 @@
 
 	protected override int BuildHash()
 	{
-		return HashCode.Combine(Spectating.IsForced, Game.LocalClient.HasRockedTheVote(), Game.LocalClient?.IsAdmin ?? false, TTT.GameManager.TribunalEnabled);
+		return HashCode.Combine(Spectating.IsForced, Game.LocalClient.HasRockedTheVote(), TTT.GameManager.LocalClientHasAdminAccess, TTT.GameManager.TribunalEnabled);
 	}
 }
 

@@ -5,9 +5,12 @@ namespace TTT;
 
 public partial class GameManager
 {
-	[ConCmd.Admin( Name = "ttt_respawn", Help = "Respawns the current player or the player with the given id" )]
+	[ConCmd.Server( Name = "ttt_respawn", Help = "Respawns the current player or the player with the given id" )]
 	public static void RespawnPlayer( int id = 0 )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		var player = id == 0 ? ConsoleSystem.Caller.Pawn as Player : FindByIndex( id ) as Player;
 		if ( !player.IsValid() )
 			return;
@@ -15,9 +18,12 @@ public partial class GameManager
 		player.Respawn();
 	}
 
-	[ConCmd.Admin( Name = "ttt_giveitem" )]
+	[ConCmd.Server( Name = "ttt_giveitem" )]
 	public static void GiveItem( string itemName )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		if ( itemName.IsNullOrEmpty() )
 			return;
 
@@ -38,9 +44,12 @@ public partial class GameManager
 			player.Perks.Add( TypeLibrary.Create<Perk>( itemInfo.ClassName ) );
 	}
 
-	[ConCmd.Admin( Name = "ttt_givecredits" )]
+	[ConCmd.Server( Name = "ttt_givecredits" )]
 	public static void GiveCredits( int credits )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		var player = ConsoleSystem.Caller.Pawn as Player;
 		if ( !player.IsValid() )
 			return;
@@ -48,9 +57,12 @@ public partial class GameManager
 		player.Credits += credits;
 	}
 
-	[ConCmd.Admin( Name = "ttt_givedamage" )]
+	[ConCmd.Server( Name = "ttt_givedamage" )]
 	public static void GiveDamage( float damage )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		var player = ConsoleSystem.Caller.Pawn as Player;
 		if ( !player.IsValid() )
 			return;
@@ -58,9 +70,12 @@ public partial class GameManager
 		player.TakeDamage( DamageInfo.Generic( damage ) );
 	}
 
-	[ConCmd.Admin( Name = "ttt_setrole" )]
+	[ConCmd.Server( Name = "ttt_setrole" )]
 	public static void SetRole( string roleName )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		if ( GameManager.Current.State is not InProgress )
 			return;
 
@@ -78,9 +93,12 @@ public partial class GameManager
 		player.SetRole( roleInfo );
 	}
 
-	[ConCmd.Admin( Name = "ttt_setkarma" )]
+	[ConCmd.Server( Name = "ttt_setkarma" )]
 	public static void SetKarma( int karma )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		var player = ConsoleSystem.Caller.Pawn as Player;
 		if ( !player.IsValid() )
 			return;
@@ -88,15 +106,21 @@ public partial class GameManager
 		player.BaseKarma = karma;
 	}
 
-	[ConCmd.Admin( Name = "ttt_force_restart" )]
+	[ConCmd.Server( Name = "ttt_force_restart" )]
 	public static void ForceRestart()
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		GameManager.Current.ChangeState( new PreRound() );
 	}
 
-	[ConCmd.Admin( Name = "ttt_change_map" )]
+	[ConCmd.Server( Name = "ttt_change_map" )]
 	public static async void ChangeMap( string mapIdent )
 	{
+		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+			return;
+
 		var package = await Package.Fetch( mapIdent, true );
 		if ( package is not null && package.PackageType == Package.Type.Map )
 			Game.ChangeLevel( mapIdent );
