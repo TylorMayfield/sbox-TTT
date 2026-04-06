@@ -39,14 +39,53 @@
 			<InputGlyph action=@(player.Prop.IsValid() ? @TTT.InputAction.Duck : @TTT.InputAction.Jump) />
 			<text>@(player.Prop.IsValid() ? "to no longer possess the prop" : "to change spectating camera mode")</text>
 		</div>
+
+		@if (player.LastAttacker is TTT.Player attacker && attacker != player)
+		{
+			<div class="report-panel background-color-primary rounded">
+				<text class="report-title">Report Last Killer</text>
+				<text>@attacker.SteamName (@attacker.Role.Title)</text>
+				<TextEntry Value:bind=@ReportReason Placeholder="What happened?" class="report-entry" />
+				<button class="alt @(HasSubmittedReport ? "inactive" : "")" icon="report" @onclick=@SubmitRdmReport>
+					@(HasSubmittedReport ? "Report Submitted" : "Submit RDM Report")
+				</button>
+			</div>
+		}
 	</div>
 </root>
 
 @code
 {
+	private string ReportReason { get; set; } = string.Empty;
+	private bool HasSubmittedReport { get; set; }
+	private int LastAttackerIdent { get; set; }
+
+	public override void Tick()
+	{
+		if ( Game.LocalPawn is not TTT.Player player )
+			return;
+
+		var attackerIdent = player.LastAttacker?.NetworkIdent ?? 0;
+		if ( attackerIdent == LastAttackerIdent )
+			return;
+
+		LastAttackerIdent = attackerIdent;
+		HasSubmittedReport = false;
+		ReportReason = string.Empty;
+	}
+
+	public void SubmitRdmReport()
+	{
+		if ( HasSubmittedReport || Game.LocalPawn is not TTT.Player player || player.LastAttacker is not TTT.Player attacker )
+			return;
+
+		TTT.GameManager.SubmitRdmReport( attacker.SteamId, ReportReason );
+		HasSubmittedReport = true;
+	}
+
 	protected override int BuildHash()
 	{
-		return HashCode.Combine(Hud.DisplayedPlayer.SteamId, Hud.DisplayedPlayer.IsAlive, Hud.DisplayedPlayer.Prop);
+		return HashCode.Combine(Hud.DisplayedPlayer.SteamId, Hud.DisplayedPlayer.IsAlive, Hud.DisplayedPlayer.Prop, (Game.LocalPawn as TTT.Player)?.LastAttacker?.NetworkIdent ?? 0, HasSubmittedReport, ReportReason);
 	}
 }
 
@@ -69,6 +108,24 @@
 	.swap-panel {
 		align-items: center;
 		flex-direction: column;
+	}
+
+	.report-panel {
+		margin-top: 14px;
+		padding: 10px;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		min-width: 320px;
+	}
+
+	.report-title {
+		font-weight: 700;
+		font-size: 18px;
+	}
+
+	.report-entry {
+		width: 100%;
 	}
 
 	}</style>

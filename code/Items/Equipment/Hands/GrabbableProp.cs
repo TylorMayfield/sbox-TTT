@@ -1,4 +1,5 @@
 using Sandbox;
+using Sandbox.Physics;
 
 namespace TTT;
 
@@ -12,8 +13,10 @@ public class GrabbableProp : IGrabbable
 	private readonly Player _owner;
 	private bool _isThrowing = false;
 	private readonly bool _isInteractable = false;
+	private PhysicsBody _handPhysicsBody;
+	private PhysicsJoint _joint;
 
-	public GrabbableProp( Player owner, Entity grabPoint, ModelEntity grabbedEntity )
+	public GrabbableProp( Player owner, ModelEntity grabbedEntity )
 	{
 		_owner = owner;
 
@@ -26,7 +29,20 @@ public class GrabbableProp : IGrabbable
 		GrabbedEntity = grabbedEntity;
 		GrabbedEntity.EnableTouch = false;
 		GrabbedEntity.EnableHideInFirstPerson = false;
-		GrabbedEntity.SetParent( grabPoint, Hands.MiddleHandsAttachment, new Transform( Vector3.Zero ) );
+
+		if ( GrabbedEntity.PhysicsBody.IsValid() )
+		{
+			_handPhysicsBody = new PhysicsBody( Game.PhysicsWorld )
+			{
+				BodyType = PhysicsBodyType.Keyframed
+			};
+
+			var attachment = owner.GetAttachment( Hands.MiddleHandsAttachment )!.Value;
+			_handPhysicsBody.Position = attachment.Position;
+			_handPhysicsBody.Rotation = attachment.Rotation;
+
+			_joint = PhysicsJoint.CreateFixed( _handPhysicsBody, GrabbedEntity.PhysicsBody );
+		}
 	}
 
 	public void Update( Player player )
@@ -41,12 +57,35 @@ public class GrabbableProp : IGrabbable
 		}
 
 		if ( !GrabbedEntity.IsValid() || !_owner.IsValid() )
+		{
 			Drop();
+			return;
+		}
+
+		if ( _handPhysicsBody is null )
+			return;
+
+		if ( Vector3.DistanceBetween( GrabbedEntity.Position, _owner.EyePosition ) > Player.UseDistance * 1.75f )
+		{
+			Drop();
+			return;
+		}
+
+		var attachment = player.GetAttachment( Hands.MiddleHandsAttachment )!.Value;
+		_handPhysicsBody.Position = attachment.Position;
+		_handPhysicsBody.Rotation = attachment.Rotation;
 	}
 
 	public Entity Drop()
 	{
 		var grabbedEntity = GrabbedEntity;
+
+		if ( _joint.IsValid() )
+			_joint.Remove();
+
+		_joint = null;
+		_handPhysicsBody = null;
+
 		if ( grabbedEntity.IsValid() )
 		{
 			if ( !_isInteractable )

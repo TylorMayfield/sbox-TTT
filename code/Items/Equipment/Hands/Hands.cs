@@ -55,7 +55,10 @@ public partial class Hands : Carriable
 		else if ( Input.Pressed( InputAction.SecondaryAttack ) )
 		{
 			if ( IsHoldingEntity )
+			{
 				_grabbedEntity.Drop();
+				_grabbedEntity = null;
+			}
 			else
 				PushEntity();
 		}
@@ -64,6 +67,15 @@ public partial class Hands : Carriable
 			return;
 
 		_grabbedEntity.Update( Owner );
+
+		if ( !_grabbedEntity.IsHolding )
+		{
+			_grabbedEntity = null;
+			CurrentPrimaryHint = null;
+			CurrentSecondaryHint = null;
+			return;
+		}
+
 		CurrentPrimaryHint = _grabbedEntity.PrimaryAttackHint;
 		CurrentSecondaryHint = _grabbedEntity.SecondaryAttackHint;
 	}
@@ -120,11 +132,11 @@ public partial class Hands : Carriable
 				_grabbedEntity = new GrabbableCorpse( Owner, corpse );
 				break;
 			case Carriable: // Ignore any size requirements, any weapon can be picked up.
-				_grabbedEntity = new GrabbableProp( Owner, GrabPoint, trace.Entity as ModelEntity );
+				_grabbedEntity = new GrabbableProp( Owner, trace.Entity as ModelEntity );
 				break;
 			case ModelEntity model:
 				if ( CanPickup( model ) )
-					_grabbedEntity = new GrabbableProp( Owner, GrabPoint, model );
+					_grabbedEntity = new GrabbableProp( Owner, model );
 				break;
 		}
 	}
@@ -143,7 +155,7 @@ public partial class Hands : Carriable
 
 	public override void OnCarryDrop( Player player )
 	{
-		base.OnCarryStart( player );
+		base.OnCarryDrop( player );
 
 		if ( !Game.IsServer )
 			return;

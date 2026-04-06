@@ -15,6 +15,16 @@ Need to chat with the devs? Join our [discord](https://discord.gg/rrsrakF8N3).
 
 You can checkout devblog update videos on my [YouTube channel](https://www.youtube.com/channel/UCk2IAm1j9o_3GWrqf537gNg). We also have a [website](https://cigarlounge.github.io/) that showcases some gameplay screenshots.
 
+### Server Config
+
+Body hanging permissions are controlled by the saved server convar `ttt_hang_body_roles`.
+Set it to a comma-separated list of role names, type names, or class names such as `traitor,detective`.
+Use `all` or `*` to allow every role to hang bodies.
+
+Public RDM tribunal voting is controlled by:
+`ttt_tribunal_enabled`, `ttt_tribunal_vote_seconds`, `ttt_tribunal_min_votes`, and `ttt_tribunal_required_ratio`.
+When enabled, open RDM reports can be voted on by the server through the in-game Global Tribunal page.
+
 ## [Contributing](https://github.com/CigarLounge/sbox-TTT/wiki/Contributing)
 
 ## [License](https://github.com/CigarLounge/sbox-TTT/blob/main/LICENSE.md)

@@ -1,0 +1,225 @@
+@using Sandbox;
+@using System;
+@using System.Linq;
+@using global::TTT;
+
+@namespace TTT.UI
+
+@if (Game.LocalClient is null || !Game.LocalClient.IsAdmin)
+{
+    return;
+}
+
+<root>
+    <div class="toolbar">
+        <div class="meta">
+            <text class="title">Admin Console</text>
+            <text class="subtitle">Reports, moderation actions, and recent round activity</text>
+            <text class="subtitle">Last updated: @(LastUpdated == default ? "Never" : LastUpdated.ToString("T"))</text>
+        </div>
+        <button class="alt" icon="refresh" @onclick=@Refresh>Refresh</button>
+    </div>
+
+    <div class="layout">
+        <div class="column">
+            <div class="section background-color-secondary rounded">
+                <text class="section-title">RDM Reports (@Reports.Count)</text>
+                @if (!Reports.Any())
+                {
+                    <text class="empty">No reports yet.</text>
+                }
+                else
+                {
+                    @foreach (var report in Reports)
+                    {
+                        <div class="card rounded">
+                            <text class="summary">#@report.Id @report.ReporterName -> @report.AccusedName</text>
+                            <text>Round @report.Round • @report.CreatedAt.ToLocalTime().ToString("g")</text>
+                            <text>Reporter role: @report.ReporterRole • Accused role: @report.AccusedRole</text>
+                            <text>Reason: @report.Reason</text>
+                            <text>Status: @report.Status @(report.ClaimedByName.IsNullOrEmpty() ? "" : $"by {report.ClaimedByName}")</text>
+                            @if (!report.ResolutionNotes.IsNullOrEmpty())
+                            {
+                                <text>Notes: @report.ResolutionNotes</text>
+                            }
+                            <div class="actions">
+                                <button class="alt" icon="assignment_ind" @onclick=@(() => Claim(report.Id))>Claim</button>
+                                <button class="alt" icon="task_alt" @onclick=@(() => Resolve(report.Id))>Resolve</button>
+                                <button class="alt" icon="cancel" @onclick=@(() => Dismiss(report.Id))>Dismiss</button>
+                                <button class="alt" icon="gavel" @onclick=@(() => Ban(report.AccusedSteamId))>Ban 60m</button>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="section background-color-secondary rounded">
+                <text class="section-title">Online Players (@Players.Count)</text>
+                @foreach (var player in Players)
+                {
+                    <div class="player-row">
+                        <div class="player-meta">
+                            <text class="summary">@player.Name</text>
+                            <text>@player.Role • @player.Status • Karma @player.Karma • Score @player.Score</text>
+                            <text>SteamID: @player.SteamId</text>
+                        </div>
+                        <div class="actions">
+                            <button class="alt" icon="logout" @onclick=@(() => Kick(player.SteamId))>Kick</button>
+                            <button class="alt" icon="gavel" @onclick=@(() => Ban(player.SteamId))>Ban 60m</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="column narrow">
+            <div class="section background-color-secondary rounded">
+                <text class="section-title">Recent Logs (@Logs.Count)</text>
+                @if (!Logs.Any())
+                {
+                    <text class="empty">No moderation logs available.</text>
+                }
+                else
+                {
+                    @foreach (var log in Logs)
+                    {
+                        <div class="log-entry">
+                            <text class="summary">[@log.Category] @log.Summary</text>
+                            <text>@log.CreatedAt.ToLocalTime().ToString("g") • Round @log.Round</text>
+                            @if (!log.Details.IsNullOrEmpty())
+                            {
+                                <text>@log.Details</text>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</root>
+
+@code
+{
+    public void Refresh()
+    {
+        GameManager.RequestModerationSnapshot();
+    }
+
+    public void Claim(int reportId)
+    {
+        GameManager.ClaimRdmReport(reportId);
+    }
+
+    public void Resolve(int reportId)
+    {
+        GameManager.ResolveRdmReport(reportId);
+    }
+
+    public void Dismiss(int reportId)
+    {
+        GameManager.DismissRdmReport(reportId);
+    }
+
+    public void Kick(long steamId)
+    {
+        GameManager.KickPlayer($"{steamId}");
+    }
+
+    public void Ban(long steamId)
+    {
+        GameManager.BanPlayer($"{steamId}", 60, "Issued via admin console");
+    }
+
+    protected override int BuildHash()
+    {
+        return HashCode.Combine(Reports.Count, Logs.Count, Players.Count, LastUpdated);
+    }
+}
+
+<style>
+    AdminPage {
+        width: 100%;
+        height: 100%;
+        flex-direction: column;
+        gap: 12px;
+        overflow: scroll;
+
+        .toolbar {
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+
+            .meta {
+                flex-direction: column;
+            }
+        }
+
+        .title {
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            opacity: 0.75;
+            font-size: 14px;
+        }
+
+        .layout {
+            gap: 12px;
+        }
+
+        .column {
+            width: 60%;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .column.narrow {
+            width: 40%;
+        }
+
+        .section {
+            padding: 14px;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .card,
+        .player-row,
+        .log-entry {
+            background-color: rgba(255, 255, 255, 0.04);
+            padding: 10px;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .player-row {
+            flex-direction: row;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .player-meta {
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .summary {
+            font-weight: 700;
+        }
+
+        .actions {
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .empty {
+            opacity: 0.7;
+        }
+    }
+</style>

@@ -1,0 +1,160 @@
+@using Sandbox;
+@using System;
+@using System.Linq;
+@using global::TTT;
+
+@namespace TTT.UI
+
+<root>
+    <div class="toolbar">
+        <div class="meta">
+            <text class="title">Global Tribunal</text>
+            <text class="subtitle">Open RDM cases can be decided by server vote.</text>
+            <text class="subtitle">Last updated: @(LastUpdated == default ? "Never" : LastUpdated.ToString("T"))</text>
+        </div>
+        <button class="alt" icon="refresh" @onclick=@Refresh>Refresh</button>
+    </div>
+
+    <div class="section background-color-secondary rounded">
+        <text class="section-title">Open Cases</text>
+        @if (!Reports.Any(report => report.TribunalEndsAt is not null))
+        {
+            <text class="empty">No tribunal cases are currently open.</text>
+        }
+        else
+        {
+            @foreach (var report in Reports.Where(report => report.TribunalEndsAt is not null))
+            {
+                var guiltyVotes = report.TribunalVotes.Count(v => v.IsGuiltyVote);
+                var notGuiltyVotes = report.TribunalVotes.Count - guiltyVotes;
+                var myVote = report.TribunalVotes.FirstOrDefault(v => v.VoterSteamId == Game.LocalClient?.SteamId);
+                var lockedOut = Game.LocalClient?.SteamId == report.ReporterSteamId || Game.LocalClient?.SteamId == report.AccusedSteamId;
+
+                <div class="case-card rounded">
+                    <text class="summary">#@report.Id @report.ReporterName -> @report.AccusedName</text>
+                    <text>Round @report.Round • Filed @report.CreatedAt.ToLocalTime().ToString("g")</text>
+                    <text>Reason: @report.Reason</text>
+                    <text>Votes: Guilty @guiltyVotes • Not Guilty @notGuiltyVotes</text>
+                    <text>Voting ends: @report.TribunalEndsAt?.ToLocalTime().ToString("T")</text>
+                    @if (myVote is not null)
+                    {
+                        <text>Your vote: @(myVote.IsGuiltyVote ? "Guilty" : "Not Guilty")</text>
+                    }
+                    else if (lockedOut)
+                    {
+                        <text>You cannot vote on a case you are directly involved in.</text>
+                    }
+                    <div class="actions">
+                        <button class="alt @(lockedOut ? "inactive" : "")" icon="gavel" @onclick=@(() => Vote(report.Id, true))>Vote Guilty</button>
+                        <button class="alt @(lockedOut ? "inactive" : "")" icon="balance" @onclick=@(() => Vote(report.Id, false))>Vote Not Guilty</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="section background-color-secondary rounded">
+        <text class="section-title">Closed Cases</text>
+        @if (!Reports.Any(report => report.TribunalEndsAt is null && report.TribunalVerdict != TribunalVerdict.None))
+        {
+            <text class="empty">No closed tribunal cases yet.</text>
+        }
+        else
+        {
+            @foreach (var report in Reports.Where(report => report.TribunalEndsAt is null && report.TribunalVerdict != TribunalVerdict.None))
+            {
+                var guiltyVotes = report.TribunalVotes.Count(v => v.IsGuiltyVote);
+                var notGuiltyVotes = report.TribunalVotes.Count - guiltyVotes;
+
+                <div class="case-card rounded">
+                    <text class="summary">#@report.Id @report.ReporterName -> @report.AccusedName</text>
+                    <text>Verdict: @report.TribunalVerdict • Status: @report.Status</text>
+                    <text>Votes: Guilty @guiltyVotes • Not Guilty @notGuiltyVotes</text>
+                    @if (!report.ResolutionNotes.IsNullOrEmpty())
+                    {
+                        <text>@report.ResolutionNotes</text>
+                    }
+                </div>
+            }
+        }
+    </div>
+</root>
+
+@code
+{
+    public void Refresh()
+    {
+        GameManager.RequestTribunalSnapshot();
+    }
+
+    public void Vote(int reportId, bool isGuiltyVote)
+    {
+        GameManager.VoteOnRdmReport(reportId, isGuiltyVote);
+    }
+
+    protected override int BuildHash()
+    {
+        return HashCode.Combine(Reports.Count, Reports.Sum(r => r.TribunalVotes?.Count ?? 0), LastUpdated, Game.LocalClient?.SteamId ?? 0);
+    }
+}
+
+<style>
+    TribunalPage {
+        width: 100%;
+        height: 100%;
+        flex-direction: column;
+        gap: 12px;
+        overflow: scroll;
+
+        .toolbar {
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .meta {
+            flex-direction: column;
+        }
+
+        .title {
+            font-size: 26px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            opacity: 0.75;
+            font-size: 14px;
+        }
+
+        .section {
+            padding: 14px;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .case-card {
+            background-color: rgba(255, 255, 255, 0.04);
+            padding: 10px;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .summary {
+            font-weight: 700;
+        }
+
+        .actions {
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .empty {
+            opacity: 0.7;
+        }
+    }
+</style>

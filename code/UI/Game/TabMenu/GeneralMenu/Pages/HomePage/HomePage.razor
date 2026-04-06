@@ -5,6 +5,14 @@
 
 <root>
 	<button class="alt" icon="leaderboard" @onclick=@GoToRoundSummaryPage>Round Summary</button>
+	@if (TTT.GameManager.TribunalEnabled)
+	{
+		<button class="alt" icon="gavel" @onclick=@GoToTribunalPage>Global Tribunal</button>
+	}
+	@if (Game.LocalClient is not null && Game.LocalClient.IsAdmin)
+	{
+		<button class="alt" icon="admin_panel_settings" @onclick=@GoToAdminPage>Admin Console</button>
+	}
 	<button class="alt" icon="videocam" @onclick=@ToggleForcedSpectating>Force Spectator Mode - @(Spectating.IsForced ? "Enabled" : "Disabled")</button>
 	<button icon="how_to_vote" @onclick=@RockTheVote class="alt @(Game.LocalClient.HasRockedTheVote() ? "inactive" : "")">Rock The Vote</button>
 	<button class="alt" icon="adjust" @onclick=@GoToCrosshairPage>Crosshair Customization</button>
@@ -16,6 +24,16 @@
 	public void GoToRoundSummaryPage()
 	{
 		GeneralMenu.Instance.AddPage(new RoundSummaryPage());
+	}
+
+	public void GoToAdminPage()
+	{
+		GeneralMenu.Instance.AddPage(new AdminPage());
+	}
+
+	public void GoToTribunalPage()
+	{
+		GeneralMenu.Instance.AddPage(new TribunalPage());
 	}
 
 	public void GoToKeyBindingsPage()
@@ -40,7 +58,7 @@
 
 	protected override int BuildHash()
 	{
-		return HashCode.Combine(Spectating.IsForced, Game.LocalClient.HasRockedTheVote());
+		return HashCode.Combine(Spectating.IsForced, Game.LocalClient.HasRockedTheVote(), Game.LocalClient?.IsAdmin ?? false, TTT.GameManager.TribunalEnabled);
 	}
 }
 

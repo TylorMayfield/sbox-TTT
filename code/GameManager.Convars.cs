@@ -1,4 +1,6 @@
 using Sandbox;
+using System;
+using System.Linq;
 
 namespace TTT;
 
@@ -85,5 +87,45 @@ public partial class GameManager
 			client.Voice.WantsStereo = newValue;
 		}
 	}
+	#endregion
+
+	#region Corpse Interaction
+	[ConVar.Server( "ttt_hang_body_roles", Help = "Comma-separated list of roles allowed to hang bodies. Accepts role titles, type names, or class names. Use '*' or 'all' to allow everyone.", Saved = true )]
+	public static string HangBodyRoles { get; set; } = "traitor,detective,innocent";
+
+	public static bool CanHangBodies( Role role )
+	{
+		if ( role is null )
+			return false;
+
+		var configuredRoles = HangBodyRoles?
+			.Split( ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )
+			.Select( value => value.ToLowerInvariant() )
+			.ToHashSet();
+
+		if ( configuredRoles is null || configuredRoles.Count == 0 )
+			return false;
+
+		if ( configuredRoles.Contains( "*" ) || configuredRoles.Contains( "all" ) )
+			return true;
+
+		return configuredRoles.Contains( role.Title.ToLowerInvariant() )
+			|| configuredRoles.Contains( role.Info.ClassName.ToLowerInvariant() )
+			|| configuredRoles.Contains( role.GetType().Name.ToLowerInvariant() );
+	}
+	#endregion
+
+	#region Tribunal
+	[ConVar.Replicated( "ttt_tribunal_enabled", Help = "Whether public tribunal voting is enabled for RDM reports.", Saved = true )]
+	public static bool TribunalEnabled { get; set; } = true;
+
+	[ConVar.Server( "ttt_tribunal_vote_seconds", Help = "How long tribunal voting stays open for a report.", Saved = true )]
+	public static int TribunalVoteSeconds { get; set; } = 90;
+
+	[ConVar.Server( "ttt_tribunal_min_votes", Help = "Minimum votes needed before a tribunal outcome can be applied.", Saved = true )]
+	public static int TribunalMinVotes { get; set; } = 3;
+
+	[ConVar.Server( "ttt_tribunal_required_ratio", Help = "Vote ratio required for an early guilty or not guilty tribunal verdict.", Saved = true )]
+	public static float TribunalRequiredRatio { get; set; } = 0.6f;
 	#endregion
 }

@@ -11,11 +11,11 @@ public partial class WalkController : BaseNetworkable
 
 	[Net] public float WalkSpeed { get; set; } = 110f;
 	[Net] public float DefaultSpeed { get; set; } = 230f;
-	[Net] public float Acceleration { get; set; } = 8.0f;
-	[Net] public float AirAcceleration { get; set; } = 65f;
+	[Net] public float Acceleration { get; set; } = 10.0f;
+	[Net] public float AirAcceleration { get; set; } = 12f;
 	[Net] public float FallSoundZ { get; set; } = -30.0f;
-	[Net] public float GroundFriction { get; set; } = 5.0f;
-	[Net] public float StopSpeed { get; set; } = 105f;
+	[Net] public float GroundFriction { get; set; } = 6.5f;
+	[Net] public float StopSpeed { get; set; } = 130f;
 	[Net] public float Size { get; set; } = 20.0f;
 	[Net] public float DistEpsilon { get; set; } = 0.03125f;
 	[Net] public float GroundAngle { get; set; } = 46.0f;
@@ -27,7 +27,7 @@ public partial class WalkController : BaseNetworkable
 	[Net] public float BodyHeight { get; set; } = 72.0f;
 	[Net] public float EyeHeight { get; set; } = 64.0f;
 	[Net] public float Gravity { get; set; } = 800.0f;
-	[Net] public float AirControl { get; set; } = 30.0f;
+	[Net] public float AirControl { get; set; } = 20.0f;
 	[Net] public bool AutoJump { get; set; } = false;
 	[Net, Predicted] public bool Momentum { get; set; }
 	[Net, Predicted] public TimeSince TimeSinceWaterJump { get; set; }

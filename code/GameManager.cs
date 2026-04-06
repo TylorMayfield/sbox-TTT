@@ -30,8 +30,8 @@ public partial class GameManager : Sandbox.GameManager
 		if ( Game.IsClient )
 			_ = new UI.Hud();
 
-		if ( Game.IsDedicatedServer )
-			LoadBannedClients();
+		if ( Game.IsServer )
+			LoadModerationData();
 
 		LoadResources();
 	}
@@ -143,8 +143,8 @@ public partial class GameManager : Sandbox.GameManager
 
 	public override void Shutdown()
 	{
-		if ( Game.IsDedicatedServer )
-			FileSystem.Data.WriteJson( BanFilePath, BannedClients );
+		if ( Game.IsServer )
+			SaveModerationData();
 	}
 
 	[GameEvent.Tick]

@@ -13,7 +13,7 @@ public abstract class Role : IEquatable<Role>, IEquatable<string>
 	public Color Color => Info.Color;
 	public bool CanUseShop => Info.CanUseShop;
 	public bool CanTeamChat => Info.CanTeamChat;
-	public bool CanAttachCorpses => Info.CanAttachCorpses;
+	public bool CanAttachCorpses => GameManager.CanHangBodies( this );
 	public string Title => Info.Title;
 	public RoleInfo.KarmaConfig Karma => Info.Karma;
 	public RoleInfo.ScoringConfig Scoring => Info.Scoring;

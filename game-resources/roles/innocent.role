@@ -11,7 +11,7 @@
 		Perks = [  ]
 		CanRetrieveCredits = false
 		CanTeamChat = false
-		CanAttachCorpses = false
+		CanAttachCorpses = true
 		RequiredKarma = 0
 		Karma = 
 		{

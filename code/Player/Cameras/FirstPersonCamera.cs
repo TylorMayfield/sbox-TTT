@@ -42,6 +42,7 @@ public class FirstPersonCamera : CameraMode
 			return;
 
 		Camera.FieldOfView = Screen.CreateVerticalFieldOfView( Game.Preferences.FieldOfView );
-		Camera.Main.SetViewModelCamera( 95f );
+		var viewModelFov = Camera.FieldOfView + 6f;
+		Camera.Main.SetViewModelCamera( viewModelFov.Clamp( 70f, 86f ) );
 	}
 }

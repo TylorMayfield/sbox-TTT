@@ -5,7 +5,7 @@
   "CanUseShop": true,
   "DefaultCredits": 100,
   "CanTeamChat": true,
-  "CanAttachCorpses": false,
+  "CanAttachCorpses": true,
   "RequiredKarma": 600,
   "Karma": {
     "TeamKillPenaltyMultiplier": 0.015,
