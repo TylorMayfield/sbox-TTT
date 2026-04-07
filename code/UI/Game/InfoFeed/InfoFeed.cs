@@ -43,34 +43,29 @@ public partial class InfoFeed : Panel
 		}
 	}
 
-	[ClientRpc]
 	public static void AddEntry( string message )
 	{
-		Instance.AddToFeed( new InfoFeedEntry( message ) );
+		Instance?.AddToFeed( new InfoFeedEntry( message ) );
 	}
 
-	[ClientRpc]
 	public static void AddEntry( string message, Color color )
 	{
-		Instance.AddToFeed( new InfoFeedEntry( message, color ) );
+		Instance?.AddToFeed( new InfoFeedEntry( message, color ) );
 	}
 
-	[ClientRpc]
 	public static void AddEntry( Player player, string message )
 	{
-		Instance.AddToFeed( new InfoFeedEntry( player, message ) );
+		Instance?.AddToFeed( new InfoFeedEntry( player, message ) );
 	}
 
-	[ClientRpc]
 	public static void AddRoleEntry( RoleInfo roleInfo, string message )
 	{
-		Instance.AddToFeed( new InfoFeedEntry( roleInfo, message ) );
+		Instance?.AddToFeed( new InfoFeedEntry( roleInfo, message ) );
 	}
 
-	[ClientRpc]
 	public static void AddPlayerToPlayerEntry( Player left, Player right, string message, string suffix = "" )
 	{
-		Instance.AddToFeed( new InfoFeedEntry( left, right, message, suffix ) );
+		Instance?.AddToFeed( new InfoFeedEntry( left, right, message, suffix ) );
 	}
 
 	[TTTEvent.Player.CorpseFound]
@@ -90,10 +85,11 @@ public partial class InfoFeed : Panel
 	{
 		this.Enabled( true );
 
-		if ( GameManager.Current.State.HasStarted )
+		if ( GameManager.Instance?.State.HasStarted == true )
 			return;
 
-		if ( Game.LocalPawn is not Player player )
+		var player = Player.Local;
+		if ( player is null )
 			return;
 
 		AddEntry( "Roles have been assigned and the round has begun..." );
@@ -119,7 +115,6 @@ public partial class InfoFeed : Panel
 	private void OnRoundEnd( Team _, WinType _1 )
 	{
 		this.Enabled( false );
-
 		DeleteChildren();
 	}
 }

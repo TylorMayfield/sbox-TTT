@@ -11,7 +11,7 @@ public partial class CorpseHint : Panel
 
 	protected override int BuildHash()
 	{
-		var player = Game.LocalPawn as Player;
+		var player = Player.Local;
 		return HashCode.Combine(
 			_corpse,
 			_corpse.CanSearch(),

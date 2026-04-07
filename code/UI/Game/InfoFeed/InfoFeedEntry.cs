@@ -17,7 +17,7 @@ public partial class InfoFeedEntry : Panel
 
 	public InfoFeedEntry( Player player, string message )
 	{
-		Add.Label( player.IsLocalPawn ? "You" : player.SteamName, "entry" ).Style.FontColor = !player.IsRoleKnown ? Color.White : player.Role.Color;
+		Add.Label( Player.Local == player ? "You" : player.SteamName, "entry" ).Style.FontColor = !player.IsRoleKnown ? Color.White : player.Role.Color;
 		Add.Label( message );
 	}
 
@@ -29,9 +29,9 @@ public partial class InfoFeedEntry : Panel
 
 	public InfoFeedEntry( Player left, Player right, string message, string suffix = "" )
 	{
-		Add.Label( left.IsLocalPawn ? "You" : left.SteamName, "entry" ).Style.FontColor = !left.IsRoleKnown ? Color.White : left.Role.Color;
+		Add.Label( Player.Local == left ? "You" : left.SteamName, "entry" ).Style.FontColor = !left.IsRoleKnown ? Color.White : left.Role.Color;
 		Add.Label( message );
-		Add.Label( right.IsLocalPawn ? "You" : right.SteamName, "entry" ).Style.FontColor = !right.IsRoleKnown ? Color.White : right.Role.Color;
+		Add.Label( Player.Local == right ? "You" : right.SteamName, "entry" ).Style.FontColor = !right.IsRoleKnown ? Color.White : right.Role.Color;
 
 		if ( !suffix.IsNullOrEmpty() )
 			Add.Label( suffix );

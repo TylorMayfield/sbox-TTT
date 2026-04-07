@@ -11,8 +11,8 @@ public partial class C4ArmMenu : Panel
 
 	public C4ArmMenu( C4Entity c4 ) => _c4 = c4;
 
-	public void Arm() => C4Entity.ArmC4( _c4.NetworkIdent, Timer );
-	public void Pickup() => C4Entity.Pickup( _c4.NetworkIdent );
-	public void Destroy() => C4Entity.DeleteC4( _c4.NetworkIdent );
+	public void Arm() => C4Entity.ArmC4Cmd( _c4.GameObject.Id.GetHashCode(), Timer );
+	public void Pickup() => C4Entity.PickupCmd( _c4.GameObject.Id.GetHashCode() );
+	public void Destroy() => C4Entity.DeleteC4Cmd( _c4.GameObject.Id.GetHashCode() );
 	protected override int BuildHash() => HashCode.Combine( Timer );
 }

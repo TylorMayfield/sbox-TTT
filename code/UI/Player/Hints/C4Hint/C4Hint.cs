@@ -13,7 +13,7 @@ public partial class C4Hint : Panel
 
 	public override void Tick()
 	{
-		_hasDefuser = Game.LocalPawn is Player player && player.ActiveCarriable is Defuser;
+		_hasDefuser = Player.Local?.ActiveCarriable is Defuser;
 	}
 
 	protected override int BuildHash() => HashCode.Combine( _c4.IsArmed, _hasDefuser );

@@ -11,7 +11,7 @@ public partial class Player
 
 	private void DisplayEntityHints()
 	{
-		var hovered = FindHoveredCarriable();
+		var hovered = FindHoveredHint();
 
 		if ( hovered is null || _traceDistance > MaxHintDistance || !hovered.CanHint( UI.Hud.DisplayedPlayer ) )
 		{
@@ -45,7 +45,7 @@ public partial class Player
 		_currentHint = null;
 	}
 
-	private ICarriableHint FindHoveredCarriable()
+	private ICarriableHint FindHoveredHint()
 	{
 		var hovered = FindHoveredGameObject();
 		if ( hovered is null )

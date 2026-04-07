@@ -18,7 +18,7 @@ public partial class Wire : Panel
 		if ( C4.IsValid() && C4.IsArmed )
 		{
 			IsCut = true;
-			C4Entity.Defuse( Number, C4.NetworkIdent );
+			C4Entity.DefuseCmd( Number, C4.GameObject.Id.GetHashCode() );
 		}
 	}
 }
