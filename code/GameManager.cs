@@ -34,10 +34,12 @@ public partial class GameManager : Component, Component.INetworkListener
 		LoadResources();
 	}
 
-	[GameEvent.Tick]
-	private void Tick()
+	protected override void OnUpdate()
 	{
 		State?.OnTick();
+
+		if ( Networking.IsHost )
+			TickTribunalReports();
 	}
 
 	// INetworkListener - called on the host when a player connects
@@ -45,6 +47,12 @@ public partial class GameManager : Component, Component.INetworkListener
 	{
 		if ( !Networking.IsHost )
 			return;
+
+		if ( !CanConnect( channel ) )
+		{
+			channel.Kick( "You are not allowed to join this server." );
+			return;
+		}
 
 		// Spawn a player game object for this connection
 		GameObject playerGo;
@@ -75,6 +83,7 @@ public partial class GameManager : Component, Component.INetworkListener
 		playerComp.OnConnectionActive( channel );
 
 		State.OnPlayerJoin( playerComp );
+		OnPlayerJoinedModeration( playerComp );
 
 		UI.TextChat.AddInfoEntry( $"{channel.DisplayName} has joined" );
 	}
@@ -84,7 +93,10 @@ public partial class GameManager : Component, Component.INetworkListener
 		var player = FindPlayerByConnection( channel );
 
 		if ( player.IsValid() )
+		{
+			Karma.SaveKarma( player );
 			State.OnPlayerLeave( player );
+		}
 
 		UI.TextChat.AddInfoEntry( $"{channel.DisplayName} has left" );
 

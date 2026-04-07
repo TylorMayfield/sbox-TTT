@@ -6,9 +6,9 @@ namespace TTT;
 
 public static class TeamExtensions
 {
-	private static readonly Dictionary<Team, HashSet<IClient>> _clients = new();
+	private static readonly Dictionary<Team, HashSet<Connection>> _clients = new();
 	private static readonly Dictionary<Team, UI.ColorGroup> _properties = new();
-	private static readonly Dictionary<Team, List<ItemInfo>> _shopItems = new();	
+	private static readonly Dictionary<Team, List<ItemInfo>> _shopItems = new();
 
 	static TeamExtensions()
 	{
@@ -26,7 +26,7 @@ public static class TeamExtensions
 			Color = color
 		};
 
-		_clients.Add( team, new HashSet<IClient>() );
+		_clients.Add( team, new HashSet<Connection>() );
 		_shopItems.Add( team, new List<ItemInfo>() );
 	}
 
@@ -50,23 +50,23 @@ public static class TeamExtensions
 		return _clients[team].Count;
 	}
 
-	public static To ToClients( this Team team )
+	public static IEnumerable<Connection> GetConnections( this Team team )
 	{
-		return To.Multiple( _clients[team] );
+		return _clients[team];
 	}
 
-	public static To ToAliveClients( this Team team )
+	public static IEnumerable<Connection> GetAliveConnections( this Team team )
 	{
-		return To.Multiple( _clients[team].Where( x => x.Pawn is Player player && player.IsAlive ) );
+		return _clients[team].Where( c => Utils.GetPlayersWhere( p => p.Network.Owner == c && p.IsAlive ).Any() );
 	}
 
 	[TTTEvent.Player.RoleChanged]
 	private static void OnPlayerRoleChanged( Player player, Role oldRole )
 	{
 		if ( oldRole is not null )
-			_clients[oldRole.Team].Remove( player.Client );
+			_clients[oldRole.Team].Remove( player.Network.Owner );
 
 		if ( player.Role is not null )
-			_clients[player.Team].Add( player.Client );
+			_clients[player.Team].Add( player.Network.Owner );
 	}
 }

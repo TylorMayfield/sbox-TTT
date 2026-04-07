@@ -803,7 +803,6 @@ public partial class GameManager
 		AddModerationLog( "Tribunal", $"Report #{report.Id} tribunal verdict: {report.TribunalVerdict}", report.ResolutionNotes );
 	}
 
-	[GameEvent.Tick]
 	private static void TickTribunalReports()
 	{
 		if ( !Networking.IsHost || !TribunalEnabled )

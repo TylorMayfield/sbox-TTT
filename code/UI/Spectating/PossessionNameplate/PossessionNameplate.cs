@@ -13,12 +13,12 @@ public partial class PossessionNameplate : WorldPanel
 		SceneObject.Flags.ViewModelLayer = true;
 	}
 
-	[GameEvent.Client.Frame]
+	[GameEvent.Tick]
 	private void FrameUpdate()
 	{
 		var tx = Transform;
 		tx.Position = _prop.WorldSpaceBounds.Center + (Vector3.Up * _prop.Model.RenderBounds.Maxs);
-		tx.Rotation = Camera.Rotation.RotateAroundAxis( Vector3.Up, 180f );
+		tx.Rotation = (Game.ActiveScene?.Camera?.WorldRotation ?? Rotation.Identity).RotateAroundAxis( Vector3.Up, 180f );
 
 		Transform = tx;
 	}

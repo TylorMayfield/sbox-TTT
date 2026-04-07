@@ -19,11 +19,11 @@ public partial class RoleSummary : Panel
 	private static List<RoleSummaryPlayer> _detectives = new();
 	private static List<RoleSummaryPlayer> _traitors = new();
 	private static List<RoundHighlight> _highlights = new();
-	private static readonly Dictionary<long, float> _damageDealt = new();
-	private static readonly Dictionary<long, float> _burnDamageDealt = new();
-	private static readonly Dictionary<long, int> _kills = new();
-	private static readonly Dictionary<long, int> _fallDeaths = new();
-	private static readonly Dictionary<long, string> _playerNames = new();
+	private static readonly Dictionary<ulong, float> _damageDealt = new();
+	private static readonly Dictionary<ulong, float> _burnDamageDealt = new();
+	private static readonly Dictionary<ulong, int> _kills = new();
+	private static readonly Dictionary<ulong, int> _fallDeaths = new();
+	private static readonly Dictionary<ulong, string> _playerNames = new();
 	private static string _latestSummaryJson = string.Empty;
 
 	public RoleSummary() => Instance = this;
@@ -38,7 +38,7 @@ public partial class RoleSummary : Panel
 		_playerNames.Clear();
 		_latestSummaryJson = string.Empty;
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		ClearData();
@@ -47,10 +47,10 @@ public partial class RoleSummary : Panel
 	[TTTEvent.Player.TookDamage]
 	private static void OnPlayerTookDamage( Player victim )
 	{
-		if ( !Game.IsServer || GameManager.Current.State is not InProgress )
+		if ( !Networking.IsHost || GameManager.Instance?.State is not InProgress )
 			return;
 
-		if ( victim.LastAttacker is not Player attacker || attacker == victim )
+		if ( victim.LastAttacker?.Components.Get<Player>() is not Player attacker || attacker == victim )
 			return;
 
 		_playerNames[attacker.SteamId] = attacker.SteamName;
@@ -64,10 +64,10 @@ public partial class RoleSummary : Panel
 	[TTTEvent.Player.Killed]
 	private static void OnPlayerKilled( Player victim )
 	{
-		if ( !Game.IsServer || GameManager.Current.State is not InProgress )
+		if ( !Networking.IsHost || GameManager.Instance?.State is not InProgress )
 			return;
 
-		if ( victim.LastAttacker is Player attacker && attacker != victim )
+		if ( victim.LastAttacker?.Components.Get<Player>() is Player attacker && attacker != victim )
 		{
 			_playerNames[attacker.SteamId] = attacker.SteamName;
 			_kills[attacker.SteamId] = _kills.GetValueOrDefault( attacker.SteamId ) + 1;
@@ -83,15 +83,15 @@ public partial class RoleSummary : Panel
 	[TTTEvent.Round.End]
 	private static void OnRoundEnd( Team winningTeam, WinType winType )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		_latestSummaryJson = JsonSerializer.Serialize( BuildSnapshot(), _jsonOptions );
-		RoleSummary.SendData( _latestSummaryJson );
+		BroadcastSendData( _latestSummaryJson );
 	}
 
-	[ClientRpc]
-	public static void SendData( string snapshotJson )
+	[Broadcast]
+	public static void BroadcastSendData( string snapshotJson )
 	{
 		var snapshot = JsonSerializer.Deserialize<RoundSummarySnapshot>( snapshotJson ?? string.Empty, _jsonOptions ) ?? new RoundSummarySnapshot();
 		_innocents = snapshot.Innocents ?? new();
@@ -99,10 +99,10 @@ public partial class RoleSummary : Panel
 		_traitors = snapshot.Traitors ?? new();
 		_highlights = snapshot.Highlights ?? new();
 
-		Instance?.StateHasChanged();
+		(Instance as RoleSummary)?.StateHasChanged();
 	}
 
-	[ClientRpc]
+	[Broadcast]
 	public static void ClearData()
 	{
 		_innocents = new();
@@ -110,16 +110,25 @@ public partial class RoleSummary : Panel
 		_traitors = new();
 		_highlights = new();
 
-		Instance?.StateHasChanged();
+		(Instance as RoleSummary)?.StateHasChanged();
 	}
 
-	[ConCmd.Server( Name = "ttt_roundsummary_request" )]
+	[ConCmd( "ttt_roundsummary_request" )]
 	public static void RequestLatestSummary()
 	{
-		if ( ConsoleSystem.Caller is null || _latestSummaryJson.IsNullOrEmpty() )
+		if ( !Networking.IsHost || _latestSummaryJson.IsNullOrEmpty() )
 			return;
 
-		SendData( To.Single( ConsoleSystem.Caller ), _latestSummaryJson );
+		BroadcastSendDataTo( Rpc.Caller, _latestSummaryJson );
+	}
+
+	[Broadcast]
+	private static void BroadcastSendDataTo( Connection to, string snapshotJson )
+	{
+		if ( Connection.Local != to )
+			return;
+
+		BroadcastSendData( snapshotJson );
 	}
 
 	private static RoundSummarySnapshot BuildSnapshot()
@@ -149,32 +158,24 @@ public partial class RoleSummary : Panel
 
 	private static List<RoundHighlight> BuildHighlights()
 	{
-		var highlights = new List<RoundHighlight>();
-
-		highlights.Add( BuildTopFloatHighlight( "Most Damage", _damageDealt, "damage dealt", "No meaningful damage dealt." ) );
-		highlights.Add( BuildTopIntHighlight( "Most Kills", _kills, "kills", "No kills this round." ) );
-		highlights.Add( BuildTopFloatHighlight( "Most Burn Damage", _burnDamageDealt, "burn damage", "Nobody got roasted." ) );
-		highlights.Add( BuildFallDeathsHighlight() );
-
+		var highlights = new List<RoundHighlight>
+		{
+			BuildTopFloatHighlight( "Most Damage", _damageDealt, "damage dealt", "No meaningful damage dealt." ),
+			BuildTopIntHighlight( "Most Kills", _kills, "kills", "No kills this round." ),
+			BuildTopFloatHighlight( "Most Burn Damage", _burnDamageDealt, "burn damage", "Nobody got roasted." ),
+			BuildFallDeathsHighlight()
+		};
 		return highlights;
 	}
 
-	private static RoundHighlight BuildTopFloatHighlight( string title, Dictionary<long, float> values, string suffix, string emptyText )
+	private static RoundHighlight BuildTopFloatHighlight( string title, Dictionary<ulong, float> values, string suffix, string emptyText )
 	{
-		var topEntries = values
-			.Where( entry => entry.Value > 0f )
-			.OrderByDescending( entry => entry.Value )
-			.ToList();
-
+		var topEntries = values.Where( e => e.Value > 0f ).OrderByDescending( e => e.Value ).ToList();
 		if ( topEntries.Count == 0 )
 			return new RoundHighlight { Title = title, PrimaryText = "Nobody", SecondaryText = emptyText };
 
 		var bestValue = topEntries[0].Value;
-		var winners = topEntries
-			.Where( entry => MathF.Abs( entry.Value - bestValue ) < 0.01f )
-			.Select( entry => GetPlayerName( entry.Key ) )
-			.ToList();
-
+		var winners = topEntries.Where( e => MathF.Abs( e.Value - bestValue ) < 0.01f ).Select( e => GetPlayerName( e.Key ) ).ToList();
 		return new RoundHighlight
 		{
 			Title = title,
@@ -183,22 +184,14 @@ public partial class RoleSummary : Panel
 		};
 	}
 
-	private static RoundHighlight BuildTopIntHighlight( string title, Dictionary<long, int> values, string suffix, string emptyText )
+	private static RoundHighlight BuildTopIntHighlight( string title, Dictionary<ulong, int> values, string suffix, string emptyText )
 	{
-		var topEntries = values
-			.Where( entry => entry.Value > 0 )
-			.OrderByDescending( entry => entry.Value )
-			.ToList();
-
+		var topEntries = values.Where( e => e.Value > 0 ).OrderByDescending( e => e.Value ).ToList();
 		if ( topEntries.Count == 0 )
 			return new RoundHighlight { Title = title, PrimaryText = "Nobody", SecondaryText = emptyText };
 
 		var bestValue = topEntries[0].Value;
-		var winners = topEntries
-			.Where( entry => entry.Value == bestValue )
-			.Select( entry => GetPlayerName( entry.Key ) )
-			.ToList();
-
+		var winners = topEntries.Where( e => e.Value == bestValue ).Select( e => GetPlayerName( e.Key ) ).ToList();
 		return new RoundHighlight
 		{
 			Title = title,
@@ -210,20 +203,13 @@ public partial class RoleSummary : Panel
 	private static RoundHighlight BuildFallDeathsHighlight()
 	{
 		var fallenPlayers = _fallDeaths
-			.Where( entry => entry.Value > 0 )
-			.OrderByDescending( entry => entry.Value )
-			.Select( entry => entry.Value > 1 ? $"{GetPlayerName( entry.Key )} ({entry.Value})" : GetPlayerName( entry.Key ) )
+			.Where( e => e.Value > 0 )
+			.OrderByDescending( e => e.Value )
+			.Select( e => e.Value > 1 ? $"{GetPlayerName( e.Key )} ({e.Value})" : GetPlayerName( e.Key ) )
 			.ToList();
 
 		if ( fallenPlayers.Count == 0 )
-		{
-			return new RoundHighlight
-			{
-				Title = "Fell To Their Death",
-				PrimaryText = "Nobody",
-				SecondaryText = "Everyone stuck the landing."
-			};
-		}
+			return new RoundHighlight { Title = "Fell To Their Death", PrimaryText = "Nobody", SecondaryText = "Everyone stuck the landing." };
 
 		return new RoundHighlight
 		{
@@ -233,14 +219,12 @@ public partial class RoleSummary : Panel
 		};
 	}
 
-	private static string GetPlayerName( long steamId )
+	private static string GetPlayerName( ulong steamId )
 	{
 		if ( _playerNames.TryGetValue( steamId, out var playerName ) && !playerName.IsNullOrEmpty() )
 			return playerName;
 
-		return Game.Clients
-			.Select( client => client.Pawn as Player )
-			.FirstOrDefault( player => player.IsValid() && player.SteamId == steamId )?.SteamName ?? "Unknown Player";
+		return Utils.GetPlayersWhere( p => p.SteamId == steamId ).FirstOrDefault()?.SteamName ?? "Unknown Player";
 	}
 
 	internal class RoundHighlight
@@ -252,7 +236,7 @@ public partial class RoleSummary : Panel
 
 	internal class RoleSummaryPlayer
 	{
-		public long SteamId { get; set; }
+		public ulong SteamId { get; set; }
 		public string SteamName { get; set; }
 		public float BaseKarma { get; set; }
 		public int Score { get; set; }

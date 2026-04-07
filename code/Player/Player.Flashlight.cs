@@ -72,7 +72,6 @@ public partial class Player
 		_viewLight = null;
 	}
 
-	[GameEvent.Client.Frame]
 	private void FrameUpdateFlashlight()
 	{
 		if ( !_viewLight.IsValid() )

@@ -213,6 +213,8 @@ public partial class Player : Component
 		}
 
 		SimulateAnimation();
+		FrameUpdateFlashlight();
+		TickAfkTracking();
 	}
 
 	protected override void OnFixedUpdate()

@@ -111,8 +111,7 @@ public sealed partial class PropPossession : Component
 			_nameplate = new( _prop );
 	}
 
-	[GameEvent.Tick]
-	private void RechargePunches()
+	protected override void OnUpdate()
 	{
 		if ( !Networking.IsHost )
 			return;

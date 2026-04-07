@@ -4,7 +4,7 @@
 
 @namespace TTT.UI
 
-@if (Game.LocalPawn is not TTT.Player player || !_dnaScanner.IsValid())
+@if (TTT.Player.Local is not TTT.Player player || !_dnaScanner.IsValid())
 {
     return;
 }

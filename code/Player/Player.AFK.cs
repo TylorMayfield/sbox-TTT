@@ -66,7 +66,6 @@ public partial class Player
 		player._timeSinceLastServerActivity = 0f;
 	}
 
-	[GameEvent.Tick]
 	private static void TickAfkTracking()
 	{
 		if ( !Networking.IsHost )

@@ -10,16 +10,16 @@ public partial class InventorySelection : Panel
 {
 	private static readonly string[] _slotInputButtons = new[]
 	{
-			InputAction.Slot0,
-			InputAction.Slot1,
-			InputAction.Slot2,
-			InputAction.Slot3,
-			InputAction.Slot4,
-			InputAction.Slot5,
-			InputAction.Slot6,
-			InputAction.Slot7,
-			InputAction.Slot8,
-			InputAction.Slot9
+		InputAction.Slot0,
+		InputAction.Slot1,
+		InputAction.Slot2,
+		InputAction.Slot3,
+		InputAction.Slot4,
+		InputAction.Slot5,
+		InputAction.Slot6,
+		InputAction.Slot7,
+		InputAction.Slot8,
+		InputAction.Slot9
 	};
 
 	public static int GetKeyboardNumberPressed()
@@ -31,10 +31,10 @@ public partial class InventorySelection : Panel
 		return -1;
 	}
 
-	[GameEvent.Client.BuildInput]
-	private void BuildInput()
+	public override void Tick()
 	{
-		if ( Game.LocalPawn is not Player player || !player.IsAlive )
+		var player = Player.Local;
+		if ( player is null || !player.IsAlive )
 			return;
 
 		if ( !Children.Any() )
@@ -44,9 +44,7 @@ public partial class InventorySelection : Panel
 			return;
 
 		var childrenList = Children.ToList();
-
 		var activeCarriable = player.ActiveCarriable;
-
 		var keyboardIndexPressed = GetKeyboardNumberPressed();
 
 		if ( keyboardIndexPressed != -1 )
@@ -60,31 +58,20 @@ public partial class InventorySelection : Panel
 				{
 					if ( (int)slot.Carriable.Info.Slot == keyboardIndexPressed - 1 )
 					{
-						// Using the keyboard index the user pressed, find all carriables that
-						// have the same slot type as the index.
-						// Ex. "3" pressed, find all carriables with slot type "3".
 						weaponsOfSlotTypeSelected.Add( slot.Carriable );
 
 						if ( slot.Carriable == activeCarriable )
-						{
-							// If the current active carriable has the same slot type as
-							// the keyboard index the user pressed
 							activeCarriableOfSlotTypeIndex = weaponsOfSlotTypeSelected.Count - 1;
-						}
 					}
 				}
 			}
 
 			if ( activeCarriable is null || activeCarriableOfSlotTypeIndex == -1 )
 			{
-				// The user isn't holding an active carriable, or is holding a weapon that has a different
-				// hold type than the one selected using the keyboard. We can just select the first weapon.
 				player.ActiveChildInput = weaponsOfSlotTypeSelected.FirstOrDefault();
 			}
 			else
 			{
-				// The user is holding a weapon that has the same hold type as the keyboard index the user pressed.
-				// Find the next possible weapon within the hold types.
 				activeCarriableOfSlotTypeIndex = GetNextWeaponIndex( activeCarriableOfSlotTypeIndex, weaponsOfSlotTypeSelected.Count );
 				player.ActiveChildInput = weaponsOfSlotTypeSelected[activeCarriableOfSlotTypeIndex];
 			}
@@ -93,15 +80,14 @@ public partial class InventorySelection : Panel
 		var mouseWheelIndex = Input.MouseWheel;
 		if ( mouseWheelIndex != 0 )
 		{
-			var activeCarriableIndex = childrenList.FindIndex( ( p ) =>
-				 p is InventorySlot slot && slot.Carriable == activeCarriable );
+			var activeCarriableIndex = childrenList.FindIndex( p =>
+				p is InventorySlot slot && slot.Carriable == activeCarriable );
 
-			var newSelectedIndex = ClampSlotIndex( -mouseWheelIndex + activeCarriableIndex, childrenList.Count - 1 );
+			var newSelectedIndex = ClampSlotIndex( -(int)mouseWheelIndex.y + activeCarriableIndex, childrenList.Count - 1 );
 			player.ActiveChildInput = (childrenList[newSelectedIndex] as InventorySlot)?.Carriable;
 		}
 	}
 
-	// Keyboard selection can only increment the index by 1.
 	private int GetNextWeaponIndex( int index, int count )
 	{
 		return ClampSlotIndex( index + 1, count - 1 );
@@ -114,6 +100,6 @@ public partial class InventorySelection : Panel
 
 	protected override int BuildHash()
 	{
-		return HashCode.Combine( Hud.DisplayedPlayer.Inventory.HashCombine( carriable => carriable.NetworkIdent ) );
+		return HashCode.Combine( Hud.DisplayedPlayer.Inventory.HashCombine( carriable => carriable.GameObject?.Id.GetHashCode() ?? 0 ) );
 	}
 }

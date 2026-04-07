@@ -12,7 +12,8 @@ public partial class DNAMenu : Panel
 
 	public override void Tick()
 	{
-		if ( Game.LocalPawn is not Player player )
+		var player = Player.Local;
+		if ( player is null )
 			return;
 
 		_dnaScanner ??= player.Inventory.Find<DNAScanner>();
@@ -23,15 +24,18 @@ public partial class DNAMenu : Panel
 			SetAutoScan( AutoScan );
 	}
 
-	[ConCmd.Server]
+	[ConCmd( "ttt_dna_set_autoscan" )]
 	public static void SetAutoScan( bool enabled )
 	{
-		var player = ConsoleSystem.Caller.Pawn as Player;
-		if ( !player.IsValid() )
+		if ( !Networking.IsHost )
+			return;
+
+		var player = Utils.GetPlayersWhere( p => p.Network.Owner == Rpc.Caller ).FirstOrDefault();
+		if ( player is null )
 			return;
 
 		var scanner = player.Inventory.Find<DNAScanner>();
-		if ( !scanner.IsValid() )
+		if ( scanner is null )
 			return;
 
 		scanner.AutoScan = enabled;

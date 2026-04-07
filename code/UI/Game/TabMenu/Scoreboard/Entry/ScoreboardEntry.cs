@@ -25,7 +25,7 @@ public partial class ScoreboardEntry : Panel
 			Player.TagGroup.GetHashCode(),
 			Player.Role.GetHashCode(),
 			Karma.Enabled,
-			HashCode.Combine( Player.BaseKarma, Player.SteamId, Player.Score, Player.Client.Ping, Player.IsLocalPawn )
+			HashCode.Combine( Player.BaseKarma, Player.SteamId, Player.Score, Player.Network.Owner?.Ping, Player.Local == Player )
 		);
 	}
 
@@ -46,7 +46,7 @@ public partial class ScoreboardEntry : Panel
 			Player.TagGroup = default;
 	}
 
-	[GameEvent.Entity.PostCleanup]
+	[TTTEvent.Round.Start]
 	private void OnRoundStart()
 	{
 		ResetTag();

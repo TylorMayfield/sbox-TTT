@@ -22,7 +22,7 @@
 			{
 				<button icon=@("people") @onclick=@SwapToRoundSummary>Round Summary</button>
 			}
-			@if (Game.LocalPawn is TTT.Player player && !player.IsAlive)
+			@if (TTT.Player.Local is TTT.Player player && !player.IsAlive)
 			{
 				var muteButton = GetMuteButton();
 				<button icon=@(muteButton.icon) @onclick=@TTT.Player.ToggleMute>@muteButton.text</button>
@@ -36,7 +36,7 @@
 
 	private (string text, string icon) GetMuteButton()
 	{
-		var player = Game.LocalPawn as TTT.Player;
+		var player = TTT.Player.Local;
 		switch (player.MuteFilter)
 		{
 			case MuteFilter.None: return ("Mute Alive Players", "volume_up");
@@ -56,7 +56,7 @@
 
 	protected override int BuildHash()
 	{
-		var player = Game.LocalPawn as TTT.Player;
+		var player = TTT.Player.Local;
 		return HashCode.Combine(
 			_isScoreboard,
 			player?.IsAlive,

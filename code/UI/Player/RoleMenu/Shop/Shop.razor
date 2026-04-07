@@ -3,7 +3,7 @@
 
 @namespace TTT.UI
 
-@if (Game.LocalPawn is not TTT.Player player)
+@if (TTT.Player.Local is not TTT.Player player)
 {
     return;
 }
@@ -30,7 +30,7 @@
 
     protected override int BuildHash()
     {
-        var player = Game.LocalPawn as TTT.Player;
+        var player = TTT.Player.Local as TTT.Player;
         return HashCode.Combine(
             player.Team.GetShopItems().HashCombine(itemInfo => HashCode.Combine(player.CanPurchase(itemInfo), itemInfo.GetHashCode())), 
             _selectedItem

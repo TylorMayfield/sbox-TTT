@@ -10,15 +10,17 @@ public partial class CreditTransfer : Panel
 	private const int CreditAmount = 100;
 	private Player _selectedPlayer;
 
-	[ConCmd.Server]
-	public static void SendCredits( string rawSteamId, int credits )
+	[ConCmd( "ttt_send_credits" )]
+	public static void SendCredits( ulong receiverSteamId, int credits )
 	{
-		if ( ConsoleSystem.Caller.Pawn is not Player sendingPlayer )
+		if ( !Networking.IsHost )
 			return;
 
-		var steamId = long.Parse( rawSteamId );
-		var receivingPlayer = Utils.GetPlayersWhere( p => p.SteamId == steamId ).FirstOrDefault();
+		var sendingPlayer = Utils.GetPlayersWhere( p => p.Network.Owner == Rpc.Caller ).FirstOrDefault();
+		if ( sendingPlayer is null )
+			return;
 
+		var receivingPlayer = Utils.GetPlayersWhere( p => p.SteamId == receiverSteamId ).FirstOrDefault();
 		if ( receivingPlayer is null )
 			return;
 
@@ -34,7 +36,7 @@ public partial class CreditTransfer : Panel
 	protected override int BuildHash()
 	{
 		return HashCode.Combine(
-			(Game.LocalPawn as Player)?.Credits,
+			Player.Local?.Credits,
 			_selectedPlayer?.SteamId,
 			Utils.GetPlayersWhere( p => p.IsAlive ).HashCombine( p => p.Role.GetHashCode() )
 		);

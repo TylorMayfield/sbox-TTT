@@ -2,38 +2,42 @@ using Sandbox;
 
 namespace TTT.UI;
 
-public partial class RolePlate : EntityComponent<Player>
+public partial class RolePlate : Component
 {
 	private RolePlateWorldPanel _roleWorldPanel;
 
-	protected override void OnActivate()
+	protected override void OnStart()
 	{
-		base.OnActivate();
+		var player = Components.Get<Player>( FindMode.InSelf );
+		if ( player is null )
+			return;
 
-		_roleWorldPanel = new RolePlateWorldPanel() { Icon = Entity.Role.Info.IconPath };
-		_roleWorldPanel.SceneObject.Flags.ViewModelLayer = true;
+		_roleWorldPanel = new RolePlateWorldPanel() { Icon = player.Role.Info.IconPath };
 	}
 
-	protected override void OnDeactivate()
+	protected override void OnDestroy()
 	{
-		base.OnDeactivate();
-
 		_roleWorldPanel?.Delete();
 		_roleWorldPanel = null;
 	}
 
-	[GameEvent.Client.Frame]
+	[GameEvent.Tick]
 	private void FrameUpdate()
 	{
-		_roleWorldPanel.Enabled( !Entity.IsLocalPawn && Entity.IsAlive );
+		var player = Components.Get<Player>( FindMode.InSelf );
+		if ( player is null || _roleWorldPanel is null )
+			return;
+
+		_roleWorldPanel.Enabled( Player.Local != player && player.IsAlive );
 
 		if ( !_roleWorldPanel.IsEnabled() )
 			return;
 
-		var tx = Entity.GetBoneTransform( "head" );
-		tx.Position += Vector3.Up * 20f;
-		tx.Rotation = Camera.Rotation.RotateAroundAxis( Vector3.Up, 180f );
+		var renderer = player.Components.Get<SkinnedModelRenderer>();
+		var boneTransform = renderer?.GetBoneWorldTransform( "head" ) ?? player.WorldTransform;
+		boneTransform.Position += Vector3.Up * 20f;
+		boneTransform.Rotation = Game.ActiveScene?.Camera?.WorldRotation.RotateAroundAxis( Vector3.Up, 180f ) ?? Rotation.Identity;
 
-		_roleWorldPanel.Transform = tx;
+		_roleWorldPanel.Transform = boneTransform;
 	}
 }

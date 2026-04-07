@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Sandbox;
 using Sandbox.UI;
 
@@ -49,7 +50,8 @@ public partial class TextChat : Panel
 
 	public override void Tick()
 	{
-		if ( Game.LocalPawn is not Player player )
+		var player = Player.Local;
+		if ( player is null )
 			return;
 
 		if ( Sandbox.Input.Pressed( InputAction.Chat ) )
@@ -111,7 +113,7 @@ public partial class TextChat : Panel
 		if ( string.IsNullOrWhiteSpace( message ) )
 			return;
 
-		if ( message == "!rtv" && Game.LocalClient.HasRockedTheVote() )
+		if ( message == "!rtv" && Connection.Local.HasRockedTheVote() )
 		{
 			AddInfoEntry( "You have already rocked the vote!" );
 			return;
@@ -120,10 +122,14 @@ public partial class TextChat : Panel
 		SendChat( message );
 	}
 
-	[ConCmd.Server( "ttt_say" )]
+	[ConCmd( "ttt_say" )]
 	public static void SendChat( string message )
 	{
-		if ( ConsoleSystem.Caller.Pawn is not Player player )
+		if ( !Networking.IsHost )
+			return;
+
+		var player = Utils.GetPlayersWhere( p => p.Network.Owner == Rpc.Caller ).FirstOrDefault();
+		if ( player is null )
 			return;
 
 		if ( message == "!rtv" )
@@ -134,24 +140,46 @@ public partial class TextChat : Panel
 
 		if ( !player.IsAlive )
 		{
-			var clients = GameManager.Current.State is InProgress ? Utils.GetClientsWhere( p => !p.IsAlive ) : Game.Clients;
-			AddChatEntry( To.Multiple( clients ), player.SteamId, player.SteamName, message, Channel.Spectator );
+			if ( GameManager.Instance?.State is InProgress )
+			{
+				foreach ( var conn in Utils.GetPlayersWhere( p => !p.IsAlive ).Select( p => p.Network.Owner ).Where( c => c is not null ) )
+					BroadcastChatEntryTo( conn, player.SteamId, player.SteamName, message, Channel.Spectator );
+			}
+			else
+			{
+				BroadcastChatEntryAll( player.SteamId, player.SteamName, message, Channel.Spectator );
+			}
 			return;
 		}
 
 		if ( player.CurrentChannel == Channel.All )
 		{
 			player.LastWords = message;
-			AddChatEntry( To.Everyone, player.SteamId, player.SteamName, message, player.CurrentChannel, player.IsRoleKnown ? player.Role.Info.ResourceId : -1 );
+			BroadcastChatEntryAll( player.SteamId, player.SteamName, message, player.CurrentChannel, player.IsRoleKnown ? player.Role.Info.ResourceId : -1 );
 		}
 		else if ( player.CurrentChannel == Channel.Team && player.Role.CanTeamChat )
 		{
-			AddChatEntry( player.Team.ToClients(), player.SteamId, player.SteamName, message, player.CurrentChannel, player.Role.Info.ResourceId );
+			foreach ( var conn in Utils.GetPlayersWhere( p => p.Team == player.Team ).Select( p => p.Network.Owner ).Where( c => c is not null ) )
+				BroadcastChatEntryTo( conn, player.SteamId, player.SteamName, message, player.CurrentChannel, player.Role.Info.ResourceId );
 		}
 	}
 
-	[ClientRpc]
-	public static void AddChatEntry( long playerId, string playerName, string message, Channel channel, int roleId = -1 )
+	[Broadcast]
+	public static void BroadcastChatEntryTo( Connection to, ulong playerId, string playerName, string message, Channel channel, int roleId = -1 )
+	{
+		if ( Connection.Local != to )
+			return;
+
+		AddChatEntryLocal( playerId, playerName, message, channel, roleId );
+	}
+
+	[Broadcast]
+	public static void BroadcastChatEntryAll( ulong playerId, string playerName, string message, Channel channel, int roleId = -1 )
+	{
+		AddChatEntryLocal( playerId, playerName, message, channel, roleId );
+	}
+
+	private static void AddChatEntryLocal( ulong playerId, string playerName, string message, Channel channel, int roleId = -1 )
 	{
 		switch ( channel )
 		{
@@ -159,7 +187,7 @@ public partial class TextChat : Panel
 				Instance?.AddEntry( new TextChatEntry( playerId, playerName, message, ResourceLibrary.Get<RoleInfo>( roleId )?.Color ?? _allChatColor ) );
 				return;
 			case Channel.Team:
-				Instance?.AddEntry( new TextChatEntry( playerId, $"(TEAM) {playerName}", message, ResourceLibrary.Get<RoleInfo>( roleId ).Color ) );
+				Instance?.AddEntry( new TextChatEntry( playerId, $"(TEAM) {playerName}", message, ResourceLibrary.Get<RoleInfo>( roleId )?.Color ?? _allChatColor ) );
 				return;
 			case Channel.Spectator:
 				Instance?.AddEntry( new TextChatEntry( playerId, playerName, message, _spectatorChatColor ) );
@@ -167,7 +195,21 @@ public partial class TextChat : Panel
 		}
 	}
 
-	[ClientRpc]
+	[Broadcast]
+	public static void BroadcastInfoEntry( string message )
+	{
+		Instance?.AddEntry( new TextChatEntry( message, Color.FromBytes( 253, 196, 24 ) ) );
+	}
+
+	[Broadcast]
+	public static void BroadcastInfoEntryTo( Connection to, string message )
+	{
+		if ( Connection.Local != to )
+			return;
+
+		Instance?.AddEntry( new TextChatEntry( message, Color.FromBytes( 253, 196, 24 ) ) );
+	}
+
 	public static void AddInfoEntry( string message )
 	{
 		Instance?.AddEntry( new TextChatEntry( message, Color.FromBytes( 253, 196, 24 ) ) );
@@ -175,7 +217,8 @@ public partial class TextChat : Panel
 
 	private void OnTabPressed()
 	{
-		if ( Game.LocalPawn is not Player player || !player.IsAlive )
+		var player = Player.Local;
+		if ( player is null || !player.IsAlive )
 			return;
 
 		if ( player.Role.CanTeamChat )

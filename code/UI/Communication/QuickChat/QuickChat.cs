@@ -53,7 +53,8 @@ public partial class QuickChat : Panel
 
 	public override void Tick()
 	{
-		if ( Game.LocalPawn is not Player player )
+		var player = Player.Local;
+		if ( player is null )
 			return;
 
 		if ( Input.Pressed( InputAction.Zoom ) )
@@ -91,25 +92,27 @@ public partial class QuickChat : Panel
 
 	public static string GetTarget()
 	{
-		if ( Game.LocalPawn is not Player localPlayer )
+		var localPlayer = Player.Local;
+		if ( localPlayer is null )
 			return null;
 
-		switch ( localPlayer.HoveredEntity )
+		var trace = Game.ActiveScene?.Trace
+			.Ray( localPlayer.EyePosition, localPlayer.EyePosition + localPlayer.EyeRotation.Forward * Player.MaxHintDistance )
+			.UseHitboxes()
+			.IgnoreGameObject( localPlayer.GameObject )
+			.Run();
+
+		if ( trace is null || !trace.Value.Hit || trace.Value.GameObject is null )
+			return NoTarget;
+
+		if ( trace.Value.GameObject.Components.TryGet<Corpse>( out var corpse ) )
 		{
-			case Corpse corpse:
-			{
-				if ( corpse.Player is null )
-					return "an unidentified body";
-				else
-					return $"{corpse.Player.SteamName}'s corpse";
-			}
-			case Player player:
-			{
-				if ( player.CanHint( localPlayer ) )
-					return player.SteamName;
-				else
-					return "someone in disguise";
-			}
+			return corpse.Player is null ? "an unidentified body" : $"{corpse.Player.SteamName}'s corpse";
+		}
+
+		if ( trace.Value.GameObject.Components.TryGet<Player>( out var player ) )
+		{
+			return player.CanHint( localPlayer ) ? player.SteamName : "someone in disguise";
 		}
 
 		return NoTarget;
@@ -120,15 +123,14 @@ public partial class QuickChat : Panel
 		return target == NoTarget || target == "an unidentified body" || target == "someone in disguise";
 	}
 
-	[GameEvent.Client.BuildInput]
-	private void BuildInput()
+	public override void OnButtonEvent( ButtonEvent e )
 	{
 		if ( !this.IsEnabled() )
 			return;
 
 		var keyboardIndexPressed = InventorySelection.GetKeyboardNumberPressed();
 
-		if ( keyboardIndexPressed <= 0 ) // Only accept keyboard numbers 1-9
+		if ( keyboardIndexPressed <= 0 )
 			return;
 
 		if ( _timeSinceLastMessage > 1 )

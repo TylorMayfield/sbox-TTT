@@ -9,10 +9,10 @@ public static class Scoring
 	[TTTEvent.Player.Killed]
 	private static void OnPlayerKilled( Player player )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( GameManager.Current.State is not InProgress )
+		if ( GameManager.Instance.State is not InProgress )
 			return;
 
 		if ( !player.KilledByPlayer )
@@ -21,7 +21,8 @@ public static class Scoring
 		}
 		else
 		{
-			var attacker = (Player)player.LastAttacker;
+			if ( player.LastAttacker?.Components.TryGet<Player>( out var attacker ) != true )
+				return;
 
 			if ( attacker.Team != player.Team )
 				attacker.RoundScore += player.Role.Scoring.AttackerKillReward;
@@ -33,7 +34,7 @@ public static class Scoring
 	[TTTEvent.Player.CorpseFound]
 	private static void OnCorpseFound( Player player )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		var finder = player.Corpse.Finder;
@@ -43,16 +44,15 @@ public static class Scoring
 	[TTTEvent.Round.End]
 	private static void OnRoundEnd( Team winningTeam, WinType winType )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
+		var allPlayers = Utils.GetPlayersWhere( _ => true );
 		var alivePlayersCount = new List<int>( new int[3] );
 		var deadPlayersCount = new List<int>( new int[3] );
 
-		foreach ( var client in Game.Clients )
+		foreach ( var player in allPlayers )
 		{
-			var player = client.Pawn as Player;
-
 			if ( !player.IsAlive )
 			{
 				deadPlayersCount[(int)player.Team]++;
@@ -71,10 +71,8 @@ public static class Scoring
 		else
 			traitorBonus -= (int)MathF.Floor( alivePlayersCount[1] / 2f );
 
-		foreach ( var client in Game.Clients )
+		foreach ( var player in allPlayers )
 		{
-			var player = client.Pawn as Player;
-
 			var bonus = player.Team == Team.Traitors ? traitorBonus : innocentBonus;
 			player.RoundScore += bonus;
 

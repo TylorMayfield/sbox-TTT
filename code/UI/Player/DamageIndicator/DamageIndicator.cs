@@ -42,7 +42,9 @@ public class DamageIndicator : Panel
 		{
 			base.Tick();
 
-			var wpos = Camera.Rotation.Inverse * (Position.WithZ( 0 ) - Camera.Position.WithZ( 0 )).Normal;
+			var camRotation = Game.ActiveScene?.Camera?.WorldRotation ?? Rotation.Identity;
+			var camPosition = Game.ActiveScene?.Camera?.WorldPosition ?? Vector3.Zero;
+			var wpos = camRotation.Inverse * (Position.WithZ( 0 ) - camPosition.WithZ( 0 )).Normal;
 			wpos = wpos.WithZ( 0 ).Normal;
 
 			var angle = MathF.Atan2( wpos.y, -1.0f * wpos.x );

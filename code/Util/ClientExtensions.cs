@@ -5,9 +5,9 @@ namespace TTT;
 
 public static class ClientExtensions
 {
-	public static void Ban( this IClient client, int minutes = default, string reason = "" )
+	public static void Ban( this Connection client, int minutes = default, string reason = "" )
 	{
-		client.Kick();
+		client.Kick( reason );
 		GameManager.BannedClients.Add
 		(
 			new BannedClient
@@ -19,7 +19,7 @@ public static class ClientExtensions
 		);
 	}
 
-	public static bool HasRockedTheVote( this IClient client )
+	public static bool HasRockedTheVote( this Connection client )
 	{
 		return client.GetValue<bool>( "!rtv" );
 	}

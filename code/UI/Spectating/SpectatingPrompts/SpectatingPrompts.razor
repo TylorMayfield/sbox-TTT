@@ -3,7 +3,7 @@
 
 @namespace TTT.UI
 
-@if (Game.LocalPawn is not TTT.Player player || player.IsAlive)
+@if (TTT.Player.Local is not TTT.Player player || player.IsAlive)
 {
 	return;
 }
@@ -14,7 +14,7 @@
 		{
 			<div class="swap-panel">
 				<text class="name"
-				  style="color: @Hud.DisplayedPlayer?.Role?.Color.Hex">@Hud.DisplayedPlayer?.Client?.Name</text>
+				  style="color: @Hud.DisplayedPlayer?.Role?.Color.Hex">@Hud.DisplayedPlayer?.SteamName</text>
 				<div style="align-items: center;">
 					<text>Press</text>
 					<InputGlyph action=@TTT.InputAction.PrimaryAttack />
@@ -40,7 +40,7 @@
 			<text>@(player.Prop.IsValid() ? "to no longer possess the prop" : "to change spectating camera mode")</text>
 		</div>
 
-		@if (player.LastAttacker is TTT.Player attacker && attacker != player)
+		@if (player.LastAttacker?.Components.TryGet<TTT.Player>(out var attacker) == true && attacker != player)
 		{
 			<div class="report-panel background-color-primary rounded">
 				<text class="report-title">Report Last Killer</text>
@@ -62,10 +62,11 @@
 
 	public override void Tick()
 	{
-		if ( Game.LocalPawn is not TTT.Player player )
+		var player = TTT.Player.Local;
+		if ( player is null )
 			return;
 
-		var attackerIdent = player.LastAttacker?.NetworkIdent ?? 0;
+		var attackerIdent = player.LastAttacker?.Id.GetHashCode() ?? 0;
 		if ( attackerIdent == LastAttackerIdent )
 			return;
 
@@ -76,7 +77,11 @@
 
 	public void SubmitRdmReport()
 	{
-		if ( HasSubmittedReport || Game.LocalPawn is not TTT.Player player || player.LastAttacker is not TTT.Player attacker )
+		var player = TTT.Player.Local;
+		if ( HasSubmittedReport || player is null )
+			return;
+
+		if ( player.LastAttacker?.Components.TryGet<TTT.Player>( out var attacker ) != true )
 			return;
 
 		TTT.GameManager.SubmitRdmReport( attacker.SteamId, ReportReason );
@@ -86,7 +91,8 @@
 	protected override int BuildHash()
 	{
 		var displayedPlayer = Hud.DisplayedPlayer;
-		return HashCode.Combine(displayedPlayer?.SteamId ?? 0, displayedPlayer?.IsAlive ?? false, displayedPlayer?.Prop?.NetworkIdent ?? 0, (Game.LocalPawn as TTT.Player)?.LastAttacker?.NetworkIdent ?? 0, HasSubmittedReport, ReportReason);
+		var localPlayer = TTT.Player.Local;
+		return HashCode.Combine(displayedPlayer?.SteamId ?? 0, displayedPlayer?.IsAlive ?? false, displayedPlayer?.Prop?.Id.GetHashCode() ?? 0, localPlayer?.LastAttacker?.Id.GetHashCode() ?? 0, HasSubmittedReport, ReportReason);
 	}
 }
 

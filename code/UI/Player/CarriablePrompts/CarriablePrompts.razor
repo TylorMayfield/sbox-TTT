@@ -3,7 +3,7 @@
 
 @namespace TTT.UI
 
-@if (Game.LocalPawn is not TTT.Player player || player.ActiveCarriable is null)
+@if (TTT.Player.Local is not TTT.Player player || player.ActiveCarriable is null)
 {
     return;
 }
@@ -26,7 +26,7 @@
 @code {
     protected override int BuildHash()
     {
-        var player = Game.LocalPawn as TTT.Player;
+        var player = TTT.Player.Local as TTT.Player;
 
         return HashCode.Combine(player?.ActiveCarriable?.BindingPrompts.HashCombine(b => HashCode.Combine(b.Action.GetHashCode(), b.Text.GetHashCode())));
     }

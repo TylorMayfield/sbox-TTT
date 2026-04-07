@@ -8,22 +8,17 @@ public partial class VoiceChatEntry : Panel
 {
 	public Friend Friend;
 
-	private readonly WorldPanel _indicator;
-	private readonly RolePlate _rolePlate;
-	private readonly IClient _client;
+	private readonly Connection _client;
 	private float _voiceLevel = 0.5f;
 	private float _targetVoiceLevel = 0;
 	private readonly float _voiceTimeout = 0.1f;
 
 	RealTimeSince _timeSincePlayed;
 
-	public VoiceChatEntry( IClient client )
+	public VoiceChatEntry( Connection client )
 	{
 		_client = client;
-		Friend = new( client.SteamId );
-
-		_indicator = new VoiceChatIndicator( _client );
-		_rolePlate = client.Pawn.AsEntity().Components.Get<RolePlate>();
+		Friend = new Friend( client.SteamId );
 	}
 
 	public void Update( float level )
@@ -42,32 +37,30 @@ public partial class VoiceChatEntry : Panel
 
 		if ( timeoutInv <= 0 )
 		{
-			_indicator?.Delete();
 			Delete();
 			return;
 		}
 
 		_voiceLevel = _voiceLevel.LerpTo( _targetVoiceLevel, Time.Delta * 40.0f );
 
-		if ( !_indicator.IsValid() || _client.Pawn is not Player player || !player.IsAlive )
-		{
-			_indicator?.Delete();
-			return;
-		}
-
-		if ( !_indicator.IsEnabled() )
+		var player = Utils.GetPlayersWhere( p => p.Network.Owner == _client ).FirstOrDefault();
+		if ( player is null || !player.IsAlive )
 			return;
 
-		var tx = player.GetBoneTransform( "head" );
-		var rolePlateOffset = _rolePlate is not null ? 27f : 20f;
+		var renderer = player.Components.Get<SkinnedModelRenderer>();
+		if ( renderer is null )
+			return;
+
+		var tx = renderer.GetBoneWorldTransform( "head" ) ?? player.WorldTransform;
+		var rolePlate = player.Components.Get<RolePlate>( FindMode.InSelf );
+		var rolePlateOffset = rolePlate is not null ? 27f : 20f;
 		tx.Position += Vector3.Up * rolePlateOffset + (Vector3.Up * _voiceLevel);
-		tx.Rotation = Camera.Rotation.RotateAroundAxis( Vector3.Up, 180f );
-		_indicator.Transform = tx;
+		tx.Rotation = Game.ActiveScene?.Camera?.WorldRotation.RotateAroundAxis( Vector3.Up, 180f ) ?? Rotation.Identity;
 	}
 
 	protected override int BuildHash()
 	{
-		var player = _client.Pawn as Player;
+		var player = Utils.GetPlayersWhere( p => p.Network.Owner == _client ).FirstOrDefault();
 		return HashCode.Combine( player?.IsAlive, player?.Role.GetHashCode() );
 	}
 }

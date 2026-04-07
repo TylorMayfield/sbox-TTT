@@ -10,7 +10,7 @@ public partial class VoiceChatDisplay : Panel
 
 	public VoiceChatDisplay() => Instance = this;
 
-	public void OnVoicePlayed( IClient client )
+	public void OnVoicePlayed( Connection client )
 	{
 		var entry = ChildrenOfType<VoiceChatEntry>().FirstOrDefault( x => x.Friend.Id == client.SteamId ) ?? new VoiceChatEntry( client ) { Parent = this };
 		entry.Update( client.Voice.CurrentLevel );
@@ -19,6 +19,6 @@ public partial class VoiceChatDisplay : Panel
 	public override void Tick()
 	{
 		if ( Voice.IsRecording )
-			OnVoicePlayed( Game.LocalClient );
+			OnVoicePlayed( Connection.Local );
 	}
 }

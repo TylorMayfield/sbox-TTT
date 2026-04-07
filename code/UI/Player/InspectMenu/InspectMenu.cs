@@ -3,6 +3,7 @@ using Sandbox.Diagnostics;
 using Sandbox.UI;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TTT.UI;
 
@@ -50,8 +51,8 @@ public partial class InspectMenu : Panel
 
 		if ( player.LastSeenPlayer.IsValid() )
 			AddInspectEntry( player.LastSeenPlayer.SteamName,
-			$"The last person they saw was {player.LastSeenPlayer.SteamName}... killer or coincidence?",
-			"/ui/inspectmenu/lastseen.png" );
+				$"The last person they saw was {player.LastSeenPlayer.SteamName}... killer or coincidence?",
+				"/ui/inspectmenu/lastseen.png" );
 
 		if ( player.PlayersKilled.Count > 0 )
 		{
@@ -63,13 +64,13 @@ public partial class InspectMenu : Panel
 
 		if ( !_corpse.C4Note.IsNullOrEmpty() )
 			AddInspectEntry( "C4 Defuse Note",
-			$"You find a note stating that cutting wire {_corpse.C4Note} will safely disarm the C4.",
-			"/ui/inspectmenu/c4note.png" );
+				$"You find a note stating that cutting wire {_corpse.C4Note} will safely disarm the C4.",
+				"/ui/inspectmenu/c4note.png" );
 
 		if ( !_corpse.LastWords.IsNullOrEmpty() )
 			AddInspectEntry( "Last Words",
-			$"Their last words were... \"{_corpse.LastWords}\"",
-			"/ui/inspectmenu/lastwords.png" );
+				$"Their last words were... \"{_corpse.LastWords}\"",
+				"/ui/inspectmenu/lastwords.png" );
 
 		if ( !_corpse.Perks.IsNullOrEmpty() )
 		{
@@ -127,39 +128,51 @@ public partial class InspectMenu : Panel
 
 	protected override int BuildHash()
 	{
-		return HashCode.Combine( _corpse.HasCalledDetective, (Game.LocalPawn as Player)?.IsAlive, _selectedInspectEntry?.ActiveText.ToString() );
+		return HashCode.Combine( _corpse.HasCalledDetective, Player.Local?.IsAlive, _selectedInspectEntry?.ActiveText );
 	}
 
-	// Called from UI panel
 	public void CallDetective()
 	{
 		if ( _corpse.HasCalledDetective )
 			return;
 
-		CallDetectives( _corpse.NetworkIdent );
+		CallDetectivesCmd( _corpse.GameObject.Id.GetHashCode() );
 		_corpse.HasCalledDetective = true;
 	}
 
-	[ConCmd.Server]
-	private static void CallDetectives( int ident )
+	[ConCmd( "ttt_call_detective" )]
+	private static void CallDetectivesCmd( int goId )
 	{
-		var enemy = Entity.FindByIndex( ident );
-		if ( !enemy.IsValid() || enemy is not Corpse corpse )
+		if ( !Networking.IsHost )
 			return;
 
-		TextChat.AddInfoEntry( To.Everyone, $"{ConsoleSystem.Caller.Name} called a Detective to the body of {corpse.Player.SteamName}." );
-		SendDetectiveMarker( To.Multiple( Utils.GetClientsWhere( p => p.IsAlive && p.Role is Detective ) ), corpse.Position );
+		var corpse = Game.ActiveScene?.GetAllComponents<Corpse>()
+			.FirstOrDefault( c => c.GameObject.Id.GetHashCode() == goId );
+
+		if ( corpse is null )
+			return;
+
+		var callerName = Rpc.Caller?.Name ?? "Unknown";
+		TextChat.BroadcastInfoEntry( $"{callerName} called a Detective to the body of {corpse.Player?.SteamName}." );
+
+		foreach ( var conn in Utils.GetPlayersWhere( p => p.IsAlive && p.Role is Detective )
+			.Select( p => p.Network.Owner ).Where( c => c is not null ) )
+		{
+			BroadcastDetectiveMarker( conn, corpse.WorldPosition );
+		}
 	}
 
-	[ClientRpc]
-	public static void SendDetectiveMarker( Vector3 corpseLocation )
+	[Broadcast]
+	public static void BroadcastDetectiveMarker( Connection to, Vector3 corpseLocation )
 	{
+		if ( Connection.Local != to )
+			return;
+
 		TimeSince timeSinceCreated = 0;
-		WorldPoints.Instance.AddChild(
-			new WorldMarker
-			(
+		WorldPoints.Instance?.AddChild(
+			new WorldMarker(
 				"/ui/d-call-icon.png",
-				() => $"{(Game.LocalPawn as Player).Position.Distance( corpseLocation ).SourceUnitsToMeters():n0}m",
+				() => $"{Player.Local?.WorldPosition.Distance( corpseLocation ).SourceUnitsToMeters():n0}m",
 				() => corpseLocation,
 				() => timeSinceCreated > 30
 			)

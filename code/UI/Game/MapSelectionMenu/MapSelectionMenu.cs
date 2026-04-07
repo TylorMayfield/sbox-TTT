@@ -24,7 +24,7 @@ public partial class MapSelectionMenu : Panel
 
 	public override void Tick()
 	{
-		if ( GameManager.Current.State is not MapSelectionState mapSelectionState )
+		if ( GameManager.Instance?.State is not MapSelectionState mapSelectionState )
 			return;
 
 		// We are looping quite a lot in this code. Maybe we can use razor to make this less painful?
@@ -42,5 +42,5 @@ public partial class MapSelectionMenu : Panel
 		}
 	}
 
-	protected override int BuildHash() => HashCode.Combine( GameManager.Current.State.TimeLeftFormatted );
+	protected override int BuildHash() => HashCode.Combine( GameManager.Instance?.State.TimeLeftFormatted );
 }

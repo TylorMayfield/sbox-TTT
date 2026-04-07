@@ -1,4 +1,3 @@
-using Sandbox;
 using Sandbox.UI;
 
 namespace TTT.UI;
@@ -14,13 +13,10 @@ public partial class PostRoundPopup : Panel
 	[TTTEvent.Round.End]
 	private static void DisplayWinner( Team winningTeam, WinType winType )
 	{
-		if ( !Game.IsClient )
-			return;
-
-		Game.RootPanel.AddChild( new PostRoundPopup() { WinningTeam = winningTeam, WinType = winType } );
+		Game.RootPanel?.AddChild( new PostRoundPopup() { WinningTeam = winningTeam, WinType = winType } );
 	}
 
-	[GameEvent.Entity.PostCleanup]
+	[TTTEvent.Round.Start]
 	private void Close()
 	{
 		Delete();
