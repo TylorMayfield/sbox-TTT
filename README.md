@@ -8,12 +8,6 @@
 
 TTT is a social deduction multiplayer game built in [s&box](https://sbox.facepunch.com/news). It aims to capture the spirit of classic [Trouble in Terrorist Town](https://ttt.badking.net/) while adding modern quality-of-life improvements, moderation tools, and a few server-friendly extras.
 
-## Links
-
-- Join the community on [Discord](https://discord.gg/rrsrakF8N3)
-- Watch development updates on [YouTube](https://www.youtube.com/channel/UCk2IAm1j9o_3GWrqf537gNg)
-- Browse screenshots and project info on the [website](https://cigarlounge.github.io/)
-
 ## Gameplay
 
 Core gameplay is built around classic TTT roles, deduction, corpse investigation, traitor equipment, and round-based social chaos. Recent additions also include configurable body hanging, RDM reporting, a public tribunal system, AFK handling, and expanded round-end summaries.
