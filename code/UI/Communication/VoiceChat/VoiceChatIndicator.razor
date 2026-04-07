@@ -10,10 +10,10 @@
 </root>
 
 @code {
-    public VoiceChatIndicator(IClient client)
+    public VoiceChatIndicator(Player player)
     {
         this.SceneObject.Flags.ViewModelLayer = true;
-        this.Enabled(!client.Pawn.AsEntity().IsLocalPawn);
+        this.Enabled(player != Player.Local);
     }
 }
 

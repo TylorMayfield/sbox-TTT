@@ -34,16 +34,14 @@
     private PriorityQueue<TTT.Player, PlayerStatus> PlayersByStatus()
     {
         var players = new PriorityQueue<TTT.Player, PlayerStatus>();
-        foreach (var client in Game.Clients)
-            if (client.Pawn is TTT.Player player)
-                players.Enqueue(player, player.Status);
+        foreach (var player in Utils.GetPlayersWhere( _ => true ))
+            players.Enqueue(player, player.Status);
         return players;
     }
 
     protected override int BuildHash()
     {
-        return HashCode.Combine(Game.Clients.HashCombine(client => HashCode.Combine(client.SteamId, (int)(client.Pawn as
-        TTT.Player)?.Status)));
+        return HashCode.Combine(Utils.GetPlayersWhere( _ => true ).HashCombine(p => HashCode.Combine(p.SteamId, (int)p.Status)));
     }
 }
 

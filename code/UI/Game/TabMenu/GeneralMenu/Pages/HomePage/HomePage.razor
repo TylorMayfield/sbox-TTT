@@ -17,7 +17,7 @@
 		<button class="alt" icon="admin_panel_settings" @onclick=@GoToAdminPage>Admin Console</button>
 	}
 	<button class="alt" icon="videocam" @onclick=@ToggleForcedSpectating>Force Spectator Mode - @(Spectating.IsForced ? "Enabled" : "Disabled")</button>
-	<button icon="how_to_vote" @onclick=@RockTheVote class="alt @(Game.LocalClient.HasRockedTheVote() ? "inactive" : "")">Rock The Vote</button>
+	<button icon="how_to_vote" @onclick=@RockTheVote class="alt @(Connection.Local.HasRockedTheVote() ? "inactive" : "")">Rock The Vote</button>
 	<button class="alt" icon="adjust" @onclick=@GoToCrosshairPage>Crosshair Customization</button>
 	<button class="alt" icon="keyboard" @onclick=@GoToKeyBindingsPage>Keybindings</button>
 </root>
@@ -66,7 +66,7 @@
 
 	protected override int BuildHash()
 	{
-		return HashCode.Combine(Spectating.IsForced, Game.LocalClient.HasRockedTheVote(), TTT.GameManager.LocalClientHasAdminAccess, TTT.GameManager.TribunalEnabled);
+		return HashCode.Combine(Spectating.IsForced, Connection.Local.HasRockedTheVote(), TTT.GameManager.LocalClientHasAdminAccess, TTT.GameManager.TribunalEnabled);
 	}
 }
 

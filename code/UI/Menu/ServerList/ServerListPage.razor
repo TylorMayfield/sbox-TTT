@@ -1,5 +1,4 @@
 @using Sandbox;
-@using Sandbox.MenuSystem;
 @using Sandbox.UI;
 @using TTT.UI;
 @using System;
@@ -21,14 +20,15 @@
     </div>
 
     <section class="inset" style="flex-direction: column; flex-grow: 1; flex-shrink: 1;">
-        <ServerListPanel @ref="ServerList" ShowGame=@false FilterByGame=@Game.Menu.Package.FullIdent></ServerListPanel>
+        <!-- <ServerListPanel @ref="ServerList" ShowGame=@false FilterByGame=@Game.Menu.Package.FullIdent></ServerListPanel> -->
+        <div>Server list not available</div>
     </section>
 
     <div class="navbar">
         <div class="left">
         </div>
         <div class="right">
-            <div class="button" onclick="@(() => ServerList.Refresh())"> Refresh </div>
+            <!-- <div class="button" onclick="@(() => ServerList.Refresh())"> Refresh </div> -->
         </div>
     </div>
 
@@ -37,6 +37,6 @@
 
 @code
 {
-    ServerListPanel ServerList;
+    // ServerListPanel ServerList;
 }
 

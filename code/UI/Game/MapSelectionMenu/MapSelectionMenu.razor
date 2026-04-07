@@ -13,11 +13,11 @@
                 <span class="subtitle">Choose your next map</span>
             </div>
             <div class="right">
-                <text class="countdown">@GameManager.Current.State.TimeLeftFormatted</text>
+                <text class="countdown">@GameManager.Instance.State.TimeLeftFormatted</text>
             </div>
         </div>
         <div @ref="Maps" class="body">
-            @foreach (var map in GameManager.Current.MapVoteIdents)
+            @foreach (var map in GameManager.Instance.MapVoteIdents)
             {
                 <MapIcon Ident=@map />
             }

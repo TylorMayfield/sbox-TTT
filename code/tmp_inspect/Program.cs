@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 
 var outputDir = Path.GetFullPath(@"C:\Program Files (x86)\Steam\steamapps\common\sbox\.vs\output");
-var names = new[] { "Event", "GameEvent", "Rpc", "NetPermission", "NetFlags", "Slider2D", "Slider", "CitizenAnimation", "CitizenAnimationHelper", "PhysicsJoint", "Panel", "WorldPanel", "TextEntry", "IClient", "MenuSystem", "GameMenu", "ILoadingScreenPanel", "NavHostPanel", "IGameMenuPanel" };
+var names = new[] { "Event", "GameEvent", "Rpc", "NetPermission", "NetFlags", "Slider2D", "Slider", "CitizenAnimation", "CitizenAnimationHelper", "PhysicsJoint", "Panel", "WorldPanel", "TextEntry", "IClient", "Client", "MenuSystem", "GameMenu", "ILoadingScreenPanel", "NavHostPanel", "IGameMenuPanel", "Menu" };
 foreach (var path in Directory.EnumerateFiles(outputDir, "*.dll"))
 {
     try
@@ -36,4 +36,13 @@ if (netFlagsType != null)
     Console.WriteLine($"Sandbox.NetFlags members:");
     foreach (var field in netFlagsType.GetFields(BindingFlags.Public | BindingFlags.Static))
         Console.WriteLine($"  Field: {field.Name} {field.FieldType}");
+}
+
+var baseLibPath = Path.Combine(outputDir, "Base Library.dll");
+var baseLibAsm = Assembly.LoadFrom(baseLibPath);
+var uiTypes = baseLibAsm.GetTypes().Where(t => t.Namespace == "Sandbox.UI" && t.Name.Contains("Slider")).ToArray();
+Console.WriteLine($"Sandbox.UI Slider types: {uiTypes.Length}");
+foreach (var t in uiTypes)
+{
+    Console.WriteLine($"  {t.Name} (IsPublic={t.IsPublic})");
 }

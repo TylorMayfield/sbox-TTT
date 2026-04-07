@@ -9,14 +9,14 @@ namespace TTT.UI;
 /// </summary>
 public class ColorEditor : Panel
 {
-	public Slider2D SaturationValueSlider { get; set; }
+	public SliderControl SaturationValueSlider { get; set; }
 	protected Panel Canvas { get; set; }
 	public Panel Presets { get; protected set; }
 
 	public ColorEditor()
 	{
 		StyleSheet.Load( "/UI/Components/ColorEditor/ColorEditor.scss" );
-		SaturationValueSlider = AddChild<Slider2D>( "satval" );
+		SaturationValueSlider = AddChild<SliderControl>( "satval" );
 		SaturationValueSlider.Add.Panel( "value_gradient" );
 		SaturationValueSlider.Bind( "value", this, "SaturationAndValue" );
 

@@ -10,7 +10,8 @@
 @code {
     private string BorderColor()
     {
-        if (_client.Pawn is not TTT.Player player || !player.IsAlive)
+        var player = Utils.GetPlayersWhere( p => p.Network.Owner == _client ).FirstOrDefault();
+        if (player is null || !player.IsAlive)
             return PlayerStatus.Spectator.GetColor().Hex;
 
         if (player.Role is Detective)

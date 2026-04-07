@@ -29,8 +29,8 @@
             {
                 var guiltyVotes = report.TribunalVotes.Count(v => v.IsGuiltyVote);
                 var notGuiltyVotes = report.TribunalVotes.Count - guiltyVotes;
-                var myVote = report.TribunalVotes.FirstOrDefault(v => v.VoterSteamId == Game.LocalClient?.SteamId);
-                var lockedOut = Game.LocalClient?.SteamId == report.ReporterSteamId || Game.LocalClient?.SteamId == report.AccusedSteamId;
+                var myVote = report.TribunalVotes.FirstOrDefault(v => v.VoterSteamId == Connection.Local?.SteamId);
+                var lockedOut = Connection.Local?.SteamId == report.ReporterSteamId || Connection.Local?.SteamId == report.AccusedSteamId;
 
                 <div class="case-card rounded">
                     <text class="summary">#@report.Id @report.ReporterName -> @report.AccusedName</text>
@@ -96,7 +96,7 @@
 
     protected override int BuildHash()
     {
-        return HashCode.Combine(Reports.Count, Reports.Sum(r => r.TribunalVotes?.Count ?? 0), LastUpdated, Game.LocalClient?.SteamId ?? 0);
+        return HashCode.Combine(Reports.Count, Reports.Sum(r => r.TribunalVotes?.Count ?? 0), LastUpdated, Connection.Local?.SteamId ?? 0);
     }
 }
 

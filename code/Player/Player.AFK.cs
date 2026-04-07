@@ -60,7 +60,7 @@ public partial class Player
 			return;
 
 		var player = GameManager.Instance?.FindPlayerByConnection( Rpc.Caller );
-		if ( !player.IsValid() || player.Network.Owner?.IsBot == true )
+		if ( !player.IsValid() )
 			return;
 
 		player._timeSinceLastServerActivity = 0f;
@@ -77,7 +77,7 @@ public partial class Player
 
 	private void TickAfkTrackingInternal()
 	{
-		if ( Network.Owner?.IsBot == true || IsForcedSpectator )
+		if ( IsForcedSpectator )
 		{
 			ResetAfkTracking();
 			return;

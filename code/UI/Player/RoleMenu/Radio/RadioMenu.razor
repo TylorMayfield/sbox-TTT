@@ -9,7 +9,7 @@
     @foreach (var sound in _sounds)
     {
         <button
-        @onclick=@(() => RadioEntity.PlayRadio( FetchRadio().GameObject.Id.GetHashCode(), sound.Value[Game.Random.Int(0,sound.Value.Count - 1 )] ))
+        @onclick=@(() => RadioEntity.PlayRadioCmd( FetchRadio().GameObject.Id.GetHashCode(), sound.Value[Game.Random.Int(0,sound.Value.Count - 1 )] ))
         class="box-shadow background-color-primary rounded">
             @sound.Key
         </button>

@@ -234,7 +234,7 @@ public partial class RoleSummary : Panel
 		public string SecondaryText { get; set; }
 	}
 
-	internal class RoleSummaryPlayer
+	public class RoleSummaryPlayer
 	{
 		public ulong SteamId { get; set; }
 		public string SteamName { get; set; }
