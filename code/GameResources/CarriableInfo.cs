@@ -1,4 +1,5 @@
 using Sandbox;
+using Sandbox.Citizen;
 using System.Text.Json.Serialization;
 
 namespace TTT;
