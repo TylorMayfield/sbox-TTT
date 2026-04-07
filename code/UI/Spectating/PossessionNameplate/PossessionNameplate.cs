@@ -3,7 +3,7 @@ using Sandbox.UI;
 
 namespace TTT.UI;
 
-public partial class PossessionNameplate : WorldPanel
+public partial class PossessionNameplate : Sandbox.UI.WorldPanel
 {
 	private readonly Prop _prop;
 
