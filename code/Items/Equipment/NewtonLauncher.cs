@@ -8,13 +8,10 @@ namespace TTT;
 [Title( "Newton Launcher" )]
 public partial class NewtonLauncher : Weapon
 {
-	[Net, Predicted]
-	private float Charge { get; set; }
-
-	[Net, Local, Predicted]
+	private float _charge;
 	public bool IsCharging { get; private set; }
 
-	public override string SlotText => $"{(int)Charge}%";
+	public override string SlotText => $"{(int)_charge}%";
 
 	private const float ChargePerSecond = 50f;
 	private const float MaxCharge = 100f;
@@ -30,74 +27,71 @@ public partial class NewtonLauncher : Weapon
 	{
 		base.ActiveEnd( player, dropped );
 
-		Charge = 0;
+		_charge = 0;
 		IsCharging = false;
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( TimeSincePrimaryAttack < Info.PrimaryRate )
 			return;
 
 		if ( Input.Down( InputAction.PrimaryAttack ) )
 		{
-			Charge = Math.Min( MaxCharge, Charge + ChargePerSecond * Time.Delta );
+			_charge = Math.Min( MaxCharge, _charge + ChargePerSecond * Time.Delta );
 
 			if ( IsCharging )
 				return;
 
-			ChargeStart();
+			BroadcastChargeStart();
 			IsCharging = true;
 		}
 		else if ( Input.Released( InputAction.PrimaryAttack ) )
 		{
-			ChargeFinished();
+			BroadcastChargeFinished();
 			IsCharging = false;
 
-			using ( LagCompensation() )
-			{
-				TimeSincePrimaryAttack = 0;
-				AttackPrimary();
-			}
+			TimeSincePrimaryAttack = 0;
+			AttackPrimary();
 		}
 	}
 
 	protected override void AttackPrimary()
 	{
-		ShootEffects();
-		PlaySound( Info.FireSound );
+		BroadcastShootEffects();
+		Sound.Play( Info.FireSound, WorldPosition );
 
-		_forwardForce = (Charge / 100f * MinForwardForce) - MinForwardForce + MaxForwardForce;
-		_upwardForce = (Charge / 100f * MinUpwardForce) - MinUpwardForce + MaxUpwardForce;
+		_forwardForce = (_charge / 100f * MinForwardForce) - MinForwardForce + MaxForwardForce;
+		_upwardForce = (_charge / 100f * MinUpwardForce) - MinUpwardForce + MaxUpwardForce;
 
 		ShootBullet( Info.Spread, _forwardForce / 100f, Info.Damage, 3.0f, Info.BulletsPerFire );
 
-		Charge = 0;
+		_charge = 0;
 	}
 
-	protected override void OnHit( TraceResult trace )
+	protected override void OnHit( SceneTraceResult trace )
 	{
 		base.OnHit( trace );
 
-		if ( trace.Entity is not Player )
+		var hitPlayer = trace.GameObject?.Components.Get<Player>( FindMode.InAncestors );
+		if ( hitPlayer is null )
 			return;
 
 		var pushVel = trace.Direction * _forwardForce;
-		pushVel.z = Math.Max( pushVel.z, _upwardForce );
+		pushVel = pushVel.WithZ( Math.Max( pushVel.z, _upwardForce ) );
 
-		trace.Entity.GroundEntity = null;
-		trace.Entity.Velocity += pushVel;
+		hitPlayer.CharController.Punch( pushVel );
 	}
 
-	[ClientRpc]
-	protected void ChargeStart()
+	[Broadcast]
+	protected void BroadcastChargeStart()
 	{
-		ViewModelEntity?.SetAnimParameter( "charge", true );
+		ViewModelRenderer?.Set( "charge", true );
 	}
 
-	[ClientRpc]
-	protected void ChargeFinished()
+	[Broadcast]
+	protected void BroadcastChargeFinished()
 	{
-		ViewModelEntity?.SetAnimParameter( "charge_finished", true );
+		ViewModelRenderer?.Set( "charge_finished", true );
 	}
 }

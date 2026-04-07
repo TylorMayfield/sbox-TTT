@@ -2,39 +2,34 @@ using Sandbox;
 
 namespace TTT;
 
-[ClassName( "ttt_entity_decoy" )]
-[EditorModel( "models/decoy/decoy.vmdl" )]
-[Title( "Decoy" )]
-public partial class DecoyEntity : Prop, IEntityHint, IUse
+public sealed partial class DecoyEntity : Component, ICarriableHint
 {
-	private static readonly Model _worldModel = Model.Load( "models/decoy/decoy.vmdl" );
+	public Player Planter { get; private set; }
 
-	public override void Spawn()
+	public void Initialize( Player planter )
 	{
-		base.Spawn();
-
-		Model = _worldModel;
-		SetupPhysicsFromModel( PhysicsMotionType.Dynamic );
-		Health = 100f;
+		Planter = planter;
 	}
 
 	protected override void OnDestroy()
 	{
-		Owner?.Components.RemoveAny<DecoyComponent>();
-		base.OnDestroy();
+		Planter?.Components.RemoveAny<DecoyComponent>();
 	}
 
-	bool IUse.OnUse( Entity user )
+	bool ICarriableHint.CanHint( Player player )
 	{
-		var player = user as Player;
+		return player.IsAlive && (Planter is null || player == Planter);
+	}
+
+	void ICarriableHint.Tick( Player player )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		if ( !Input.Down( InputAction.Use ) )
+			return;
+
 		player.Inventory.Add( new Decoy() );
-		Delete();
-
-		return false;
-	}
-
-	bool IUse.IsUsable( Entity user )
-	{
-		return user is Player player && player.IsAlive && (Owner is null || user == Owner);
+		GameObject.Destroy();
 	}
 }

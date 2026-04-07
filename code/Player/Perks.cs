@@ -6,8 +6,7 @@ using System.Linq;
 namespace TTT;
 
 /// <summary>
-/// A sublist of <see cref="Entity.Components"/> that contains components
-/// of type <see cref="TTT.Perk"/>.
+/// Manages <see cref="Perk"/> components on a <see cref="Player"/>.
 /// </summary>
 public class Perks : IEnumerable<Perk>
 {
@@ -22,15 +21,19 @@ public class Perks : IEnumerable<Perk>
 
 	public void Add( Perk perk )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		Owner.Components.Add( perk );
+		_list.Add( perk );
 	}
 
 	public void Remove( Perk perk )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
+		_list.Remove( perk );
 		Owner.Components.Remove( perk );
 	}
 
@@ -45,40 +48,23 @@ public class Perks : IEnumerable<Perk>
 	{
 		foreach ( var perk in _list )
 		{
-			if ( perk is not T t || t.Equals( default( T ) ) )
-				continue;
-
-			return t;
+			if ( perk is T t )
+				return t;
 		}
+
 		return default;
 	}
 
 	public void DeleteContents()
 	{
 		foreach ( var perk in _list.ToArray() )
+		{
 			Owner.Components.Remove( perk );
-	}
+		}
 
-	public void OnComponentAdded( EntityComponent component )
-	{
-		if ( component is not Perk perk )
-			return;
-
-		if ( _list.Contains( perk ) )
-			throw new System.Exception( "Trying to add to perks multiple times. This is gated by Entity:OnComponentAdded and should never happen!" );
-
-		_list.Add( perk );
-	}
-
-	public void OnComponentRemoved( EntityComponent component )
-	{
-		if ( component is not Perk perk )
-			return;
-
-		_list.Remove( perk );
+		_list.Clear();
 	}
 
 	public IEnumerator<Perk> GetEnumerator() => _list.GetEnumerator();
-
 	IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

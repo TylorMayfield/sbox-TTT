@@ -15,36 +15,25 @@ public enum FireMode
 [Title( "Weapon" ), Icon( "sports_martial_arts" )]
 public abstract partial class Weapon : Carriable
 {
-	[Net, Predicted]
-	public int AmmoClip { get; protected set; }
-
-	[Net, Predicted]
-	public int ReserveAmmo { get; protected set; }
-
-	[Net, Local, Predicted]
-	public bool IsReloading { get; protected set; }
-
-	[Net, Local, Predicted]
-	public TimeSince TimeSincePrimaryAttack { get; protected set; }
-
-	[Net, Local, Predicted]
-	public TimeSince TimeSinceSecondaryAttack { get; protected set; }
-
-	[Net, Local, Predicted]
-	public TimeSince TimeSinceReload { get; protected set; }
+	[Sync] public int AmmoClip { get; protected set; }
+	[Sync] public int ReserveAmmo { get; protected set; }
+	[Sync] public bool IsReloading { get; protected set; }
+	[Sync] public TimeSince TimeSincePrimaryAttack { get; protected set; }
+	[Sync] public TimeSince TimeSinceSecondaryAttack { get; protected set; }
+	[Sync] public TimeSince TimeSinceReload { get; protected set; }
 
 	public new WeaponInfo Info => (WeaponInfo)base.Info;
 	public override string SlotText => $"{AmmoClip} + {ReserveAmmo + Owner?.AmmoCount( Info.AmmoType )}";
 	private Vector2 RecoilOnShoot => new( Game.Random.Float( -Info.HorizontalRecoilRange, Info.HorizontalRecoilRange ), Info.VerticalRecoil );
 	private Vector2 CurrentRecoil { get; set; } = Vector2.Zero;
 
-	public override void Spawn()
+	protected override void OnStart()
 	{
-		base.Spawn();
+		base.OnStart();
 
-		AmmoClip = Info.ClipSize;
+		AmmoClip = Info?.ClipSize ?? 0;
 
-		if ( Info.AmmoType == AmmoType.None )
+		if ( Info?.AmmoType == AmmoType.None )
 			ReserveAmmo = Info.ReserveAmmo;
 	}
 
@@ -56,7 +45,7 @@ public abstract partial class Weapon : Carriable
 		TimeSinceReload = 0;
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate()
 	{
 		if ( CanReload() )
 		{
@@ -68,27 +57,23 @@ public abstract partial class Weapon : Carriable
 		{
 			if ( CanPrimaryAttack() )
 			{
-				using ( LagCompensation() )
-				{
-					TimeSincePrimaryAttack = 0;
-					AttackPrimary();
-				}
+				TimeSincePrimaryAttack = 0;
+				AttackPrimary();
 			}
 
 			if ( CanSecondaryAttack() )
 			{
-				using ( LagCompensation() )
-				{
-					TimeSinceSecondaryAttack = 0;
-					AttackSecondary();
-				}
+				TimeSinceSecondaryAttack = 0;
+				AttackSecondary();
 			}
 
 			if ( Input.Down( InputAction.Run ) && Input.Pressed( InputAction.Drop ) )
 				DropAmmo();
 		}
 		else if ( TimeSinceReload > Info.ReloadTime )
+		{
 			OnReloadFinish();
+		}
 	}
 
 	public override void BuildInput()
@@ -142,17 +127,16 @@ public abstract partial class Weapon : Carriable
 	{
 		if ( AmmoClip == 0 )
 		{
-			DryFireEffects();
-			PlaySound( Info.DryFireSound );
-
+			BroadcastDryFireEffects();
+			Sound.Play( Info.DryFireSound, WorldPosition );
 			return;
 		}
 
 		AmmoClip--;
 
-		Owner.SetAnimParameter( "b_attack", true );
-		ShootEffects();
-		PlaySound( Info.FireSound );
+		Owner.Renderer.Set( "b_attack", true );
+		BroadcastShootEffects();
+		Sound.Play( Info.FireSound, WorldPosition );
 
 		ShootBullet( Info.Spread, 1.5f, Info.Damage, 2.0f, Info.BulletsPerFire );
 	}
@@ -181,8 +165,8 @@ public abstract partial class Weapon : Carriable
 		TimeSinceReload = 0;
 		IsReloading = true;
 
-		Owner.SetAnimParameter( "b_reload", true );
-		ReloadEffects();
+		Owner.Renderer.Set( "b_reload", true );
+		BroadcastReloadEffects();
 	}
 
 	protected virtual void OnReloadFinish()
@@ -191,31 +175,34 @@ public abstract partial class Weapon : Carriable
 		AmmoClip += TakeAmmo( Info.ClipSize - AmmoClip );
 	}
 
-	[ClientRpc]
-	protected virtual void ShootEffects()
+	[Broadcast]
+	protected virtual void BroadcastShootEffects()
 	{
 		if ( !Info.MuzzleFlashParticle.IsNullOrEmpty() )
-			Particles.Create( Info.MuzzleFlashParticle, EffectEntity, "muzzle" );
+		{
+			var attachment = WorldRenderer.GetAttachment( "muzzle" );
+			if ( attachment.HasValue )
+				SceneParticles.PlayInstant( Scene, Info.MuzzleFlashParticle, attachment.Value );
+		}
 
-		ViewModelEntity?.SetAnimParameter( "fire", true );
+		ViewModelRenderer?.Set( "fire", true );
 		CurrentRecoil += RecoilOnShoot;
 	}
 
-	[ClientRpc]
-	protected virtual void DryFireEffects()
+	[Broadcast]
+	protected virtual void BroadcastDryFireEffects()
 	{
-		ViewModelEntity?.SetAnimParameter( "dryfire", true );
+		ViewModelRenderer?.Set( "dryfire", true );
 	}
 
-	[ClientRpc]
-	protected virtual void ReloadEffects()
+	[Broadcast]
+	protected virtual void BroadcastReloadEffects()
 	{
-		ViewModelEntity?.SetAnimParameter( "reload", true );
+		ViewModelRenderer?.Set( "reload", true );
 	}
 
 	protected virtual void ShootBullet( float spread, float force, float damage, float bulletSize, int bulletCount )
 	{
-		// Seed rand using the tick, so bullet cones match on client and server
 		Game.SetRandomSeed( Time.Tick );
 
 		while ( bulletCount-- > 0 )
@@ -232,94 +219,83 @@ public abstract partial class Weapon : Carriable
 
 				if ( !Info.TracerParticle.IsNullOrEmpty() && trace.Distance > 200 )
 				{
-					var tracer = Particles.Create( Info.TracerParticle );
-
+					var tracer = new SceneParticles( Scene.SceneWorld, Info.TracerParticle );
 					if ( tracer is not null )
 					{
-						tracer.SetPosition( 0, EffectEntity.Position );
-						tracer.SetPosition( 1, trace.EndPosition );
+						tracer.SetControlPoint( 0, EffectTransform.Position );
+						tracer.SetControlPoint( 1, trace.EndPosition );
 					}
 				}
 
-				if ( !Game.IsServer )
+				if ( !Networking.IsHost )
 					continue;
 
-				if ( !trace.Entity.IsValid() )
+				var hitPlayer = trace.GameObject?.Components.TryGet<Player>( out var hitP ) == true ? hitP : null;
+				var hitCarriable = trace.GameObject?.Components.TryGet<Carriable>( out var hitC ) == true ? hitC : null;
+
+				if ( hitPlayer is null && hitCarriable is null && trace.GameObject is null )
 					continue;
 
-				using ( Prediction.Off() )
+				OnHit( trace );
+
+				if ( Info.Damage <= 0 )
+					continue;
+
+				if ( hitPlayer is not null )
 				{
-					OnHit( trace );
-
-					if ( Info.Damage <= 0 )
-						continue;
-
-					var damageInfo = DamageInfo.FromBullet( trace.EndPosition, forward * 100f * force, damage )
+					var dmgInfo = DamageInfo.FromBullet( trace.EndPosition, forward * 100f * force, damage )
 						.UsingTraceResult( trace )
-						.WithAttacker( Owner )
+						.WithAttacker( Owner.GameObject )
 						.WithWeapon( this );
 
-					if ( trace.Entity is Player && (Info.IsSilenced || damageInfo.IsHeadshot()) )
-						damageInfo.Tags.Add( "silent" );
+					if ( Info.IsSilenced || dmgInfo.IsHeadshot() )
+						dmgInfo = dmgInfo.WithTag( "silent" );
 
-					trace.Entity.TakeDamage( damageInfo );
+					hitPlayer.TakeDamage( dmgInfo );
 				}
 			}
 		}
 	}
 
 	/// <summary>
-	/// Called when the bullet hits something, i.e the World or an entity.
+	/// Called when the bullet hits something.
 	/// </summary>
-	/// <param name="trace"></param>
-	protected virtual void OnHit( TraceResult trace ) { }
+	protected virtual void OnHit( SceneTraceResult trace ) { }
 
 	/// <summary>
-	/// Does a trace from start to end, does bullet impact effects. Coded as an IEnumerable so you can return multiple
-	/// hits, like if you're going through layers or ricocet'ing or something.
+	/// Trace from start to end, returns all hits (for glass penetration, etc.)
 	/// </summary>
-	protected IEnumerable<TraceResult> TraceBullet( Vector3 start, Vector3 end, float radius = 2.0f )
+	protected IEnumerable<SceneTraceResult> TraceBullet( Vector3 start, Vector3 end, float radius = 2.0f )
 	{
-		var traceResults = new List<TraceResult>();
+		var results = new List<SceneTraceResult>();
 
-		var underWater = Trace.TestPoint( start, "water" );
-
-		var trace = Trace.Ray( start, end )
-				.UseHitboxes()
-				.WithAnyTags( "solid", "player", "glass", "interactable" )
-				.Ignore( this )
-				.Size( radius );
-
-		//
-		// If we're not underwater then we can hit water
-		//
-		if ( !underWater )
-			trace = trace.WithAnyTags( "water" );
+		var trace = Scene.Trace.Ray( start, end )
+			.UseHitboxes()
+			.WithAnyTags( "solid", "player", "glass", "interactable" )
+			.IgnoreGameObject( GameObject )
+			.Size( radius );
 
 		var tr = trace.Run();
 
 		if ( tr.Hit )
-			traceResults.Add( tr );
+			results.Add( tr );
 
-		//
-		// Let people shoot through glass
-		//
-		var hitGlass = Array.Find( tr.Tags, ( tag ) => tag == "glass" ) is not null;
+		// Shoot through glass
+		bool hitGlass = tr.Tags?.Contains( "glass" ) == true;
 		if ( hitGlass )
 		{
-			trace = Trace.Ray( tr.EndPosition, end )
+			var tr2 = Scene.Trace.Ray( tr.EndPosition, end )
 				.UseHitboxes()
 				.WithAnyTags( "solid", "player", "glass", "interactable" )
-				.Ignore( tr.Entity )
-				.Size( radius );
+				.IgnoreGameObject( tr.GameObject )
+				.Size( radius )
+				.Run();
 
-			tr = trace.Run();
-
-			if ( tr.Hit )
-				traceResults.Add( tr );
+			if ( tr2.Hit )
+				results.Add( tr2 );
 		}
 
-		return traceResults;
+		return results;
 	}
 
 	protected void DropAmmo()
@@ -327,7 +303,7 @@ public abstract partial class Weapon : Carriable
 		if ( Info.AmmoType == AmmoType.None || AmmoClip <= 0 )
 			return;
 
-		if ( Game.IsServer )
+		if ( Networking.IsHost )
 			Ammo.Drop( Owner, Info.AmmoType, AmmoClip );
 
 		AmmoClip = 0;

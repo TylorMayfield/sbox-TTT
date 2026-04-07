@@ -1,18 +1,15 @@
 {
   "Title": "TTT",
   "Type": "game",
-  "Org": "matt",
+  "Org": "Tylor.nz",
   "Ident": "ttt",
-  "Tags": "ttt social",
   "Schema": 1,
-  "HasAssets": true,
-  "AssetsPath": "",
+  "IncludeSourceFiles": false,
   "Resources": "ui/*",
-  "MenuResources": "/UI/Menu/*",
-  "HasCode": true,
-  "CodePath": "code",
   "PackageReferences": [],
   "EditorReferences": null,
+  "Mounts": null,
+  "IsStandaloneOnly": false,
   "Metadata": {
     "MapList": [],
     "MinPlayers": 1,
@@ -22,96 +19,6 @@
     "LeaderboardType": "None",
     "RankType": "None",
     "GameNetworkType": "Multiplayer",
-    "Collision": {
-      "Defaults": {
-        "solid": "Collide",
-        "trigger": "Trigger",
-        "ladder": "Ignore",
-        "water": "Trigger",
-        "interactable": "Unset",
-        "player": "Unset",
-        "glass": "Unset",
-        "debris": "Ignore"
-      },
-      "Pairs": [
-        {
-          "a": "solid",
-          "b": "solid",
-          "r": "Collide"
-        },
-        {
-          "a": "trigger",
-          "b": "playerclip",
-          "r": "Ignore"
-        },
-        {
-          "a": "solid",
-          "b": "trigger",
-          "r": "Trigger"
-        },
-        {
-          "a": "playerclip",
-          "b": "solid",
-          "r": "Collide"
-        },
-        {
-          "a": "trigger",
-          "b": "player"
-        },
-        {
-          "a": "ladder",
-          "b": "player"
-        },
-        {
-          "a": "interactable",
-          "b": "interactable",
-          "r": "Collide"
-        },
-        {
-          "a": "interactable",
-          "b": "player",
-          "r": "Trigger"
-        },
-        {
-          "a": "player",
-          "b": "player"
-        },
-        {
-          "a": "player",
-          "b": "glass",
-          "r": "Trigger"
-        },
-        {
-          "a": "trigger",
-          "b": "glass",
-          "r": "Ignore"
-        },
-        {
-          "a": "glass",
-          "b": "glass",
-          "r": "Ignore"
-        },
-        {
-          "a": "water",
-          "b": "glass"
-        },
-        {
-          "a": "solid",
-          "b": "debris",
-          "r": "Collide"
-        },
-        {
-          "a": "player",
-          "b": "debris",
-          "r": "Ignore"
-        },
-        {
-          "a": "glass",
-          "b": "debris",
-          "r": "Trigger"
-        }
-      ]
-    },
     "GameCategory": "Mystery",
     "GameSettings": {
       "ttt_avatar_clothing": {
@@ -176,181 +83,11 @@
       "DistinctReferences": []
     },
     "CsProjName": "",
-    "TickRate": 50,
-    "InputSettings": {
-      "Actions": [
-        {
-          "Name": "forward",
-          "KeyboardCode": "W",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "backward",
-          "KeyboardCode": "S",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "left",
-          "KeyboardCode": "A",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "right",
-          "KeyboardCode": "D",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "jump",
-          "KeyboardCode": "space",
-          "GamepadCode": "A",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "run",
-          "KeyboardCode": "shift",
-          "GamepadCode": "LeftJoystickButton",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "walk",
-          "KeyboardCode": "alt",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "duck",
-          "KeyboardCode": "ctrl",
-          "GamepadCode": "B",
-          "GroupName": "Movement"
-        },
-        {
-          "Name": "attack1",
-          "KeyboardCode": "mouse1",
-          "GamepadCode": "RightTrigger",
-          "GroupName": "Actions"
-        },
-        {
-          "Name": "attack2",
-          "KeyboardCode": "mouse2",
-          "GamepadCode": "LeftTrigger",
-          "GroupName": "Actions"
-        },
-        {
-          "Name": "reload",
-          "KeyboardCode": "r",
-          "GamepadCode": "X",
-          "GroupName": "Actions"
-        },
-        {
-          "Name": "use",
-          "KeyboardCode": "e",
-          "GamepadCode": "Y",
-          "GroupName": "Actions"
-        },
-        {
-          "Name": "slot1",
-          "KeyboardCode": "1",
-          "GamepadCode": "DpadWest",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot2",
-          "KeyboardCode": "2",
-          "GamepadCode": "DpadEast",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot3",
-          "KeyboardCode": "3",
-          "GamepadCode": "DpadSouth",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot4",
-          "KeyboardCode": "4",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot5",
-          "KeyboardCode": "5",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot6",
-          "KeyboardCode": "6",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot7",
-          "KeyboardCode": "7",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot8",
-          "KeyboardCode": "8",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot9",
-          "KeyboardCode": "9",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "slot0",
-          "KeyboardCode": "0",
-          "GroupName": "Inventory"
-        },
-        {
-          "Name": "view",
-          "KeyboardCode": "C",
-          "GamepadCode": "RightJoystickButton",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "voice",
-          "KeyboardCode": "v",
-          "GamepadCode": "RightJoystickButton",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "drop",
-          "KeyboardCode": "g",
-          "GamepadCode": "RightJoystickButton",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "flashlight",
-          "KeyboardCode": "f",
-          "GamepadCode": "DpadNorth",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "score",
-          "KeyboardCode": "tab",
-          "GamepadCode": "SwitchLeftMenu",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "menu",
-          "KeyboardCode": "Q",
-          "GamepadCode": "SwitchRightMenu",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "chat",
-          "KeyboardCode": "enter",
-          "GroupName": "Other"
-        },
-        {
-          "Name": "zoom",
-          "KeyboardCode": "MOUSE3",
-          "GroupName": "Other"
-        }
-      ]
-    },
+    "TickRate": 120,
     "LaunchConfigs": [
       {
         "Name": "Test",
-        "GameIdent": "matt.ttt#local",
+        "GameIdent": "tylor.nz.ttt#local",
         "MapName": "facepunch.flatgrass",
         "MaxPlayers": 64,
         "GameSettings": {},

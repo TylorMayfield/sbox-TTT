@@ -1,5 +1,4 @@
 using System;
-using Sandbox;
 using Sandbox.UI;
 
 namespace TTT.UI;
@@ -21,7 +20,7 @@ public partial class RadarPoint : Panel
 
 	public override void Tick()
 	{
-		_distance = $"{(Game.LocalPawn as Player).Position.Distance( _radarData.Position ).SourceUnitsToMeters():n0}m";
+		_distance = $"{Player.Local?.WorldPosition.Distance( _radarData.Position ).SourceUnitsToMeters():n0}m";
 		_screenPos = _radarData.Position.ToScreen();
 	}
 

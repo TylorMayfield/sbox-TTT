@@ -12,10 +12,7 @@ public enum WinType
 
 public partial class PostRound : BaseState
 {
-	[Net]
 	public Team WinningTeam { get; private set; }
-
-	[Net]
 	public WinType WinType { get; private set; }
 
 	public override string Name { get; } = "Post";
@@ -33,7 +30,7 @@ public partial class PostRound : BaseState
 
 	public static void Load( Team winningTeam, WinType winType )
 	{
-		GameManager.Current.ForceStateChange( new PostRound( winningTeam, winType ) );
+		GameManager.Instance.ForceStateChange( new PostRound( winningTeam, winType ) );
 	}
 
 	public override void OnPlayerKilled( Player player )
@@ -48,24 +45,24 @@ public partial class PostRound : BaseState
 		base.OnPlayerJoin( player );
 
 		player.Status = PlayerStatus.Spectator;
-		player.UpdateStatus( To.Everyone );
+		player.UpdateStatus();
 	}
 
 	protected override void OnStart()
 	{
-		GameManager.Current.TotalRoundsPlayed++;
+		GameManager.Instance.TotalRoundsPlayed++;
 		Event.Run( TTTEvent.Round.End, WinningTeam, WinType );
 	}
 
 	protected override void OnTimeUp()
 	{
-		GameManager.Current.ChangeState( ShouldSelectMap() ? new MapSelectionState() : new PreRound() );
+		GameManager.Instance.ChangeState( ShouldSelectMap() ? new MapSelectionState() : new PreRound() );
 	}
 
 	private bool ShouldSelectMap()
 	{
-		return GameManager.Current.TotalRoundsPlayed >= GameManager.RoundLimit
-				|| GameManager.Current.TimeUntilMapSwitch
-				|| GameManager.Current.RTVCount >= MathF.Round( Game.Clients.Count * GameManager.RTVThreshold );
+		return GameManager.Instance.TotalRoundsPlayed >= GameManager.RoundLimit
+				|| GameManager.Instance.TimeUntilMapSwitch
+				|| GameManager.Instance.RTVCount >= MathF.Round( Connection.All.Count * GameManager.RTVThreshold );
 	}
 }

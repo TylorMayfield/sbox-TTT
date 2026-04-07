@@ -9,27 +9,15 @@ public enum PlayerStatus
 	Alive,
 	MissingInAction,
 	ConfirmedDead,
+	Dead,
 	Spectator
 }
 
 public partial class Player
 {
-	[Net]
-	public long SteamId { get; internal set; }
-
-	[Net]
-	public string SteamName { get; internal set; }
-
-	[Net, Local]
-	public Corpse Corpse { get; internal set; }
-	/// <summary>
-	/// The player who confirmed this player's death.
-	/// </summary>
+	[Sync] public Corpse Corpse { get; internal set; }
 	public Player Confirmer { get; private set; }
-	// TODO: Change to use lifestate once it gets networked properly.
-	// Also replace the usage of player status inside of FirstPersonCamera.cs
-	// https://github.com/sboxgame/issues/issues/2099
-	public bool IsAlive => LifeState == LifeState.Alive;
+	public bool IsAlive => Status == PlayerStatus.Alive;
 	public bool IsMissingInAction => Status == PlayerStatus.MissingInAction;
 	public bool IsConfirmedDead => Status == PlayerStatus.ConfirmedDead;
 	public Player LastSeenPlayer { get; internal set; }
@@ -56,6 +44,9 @@ public partial class Player
 		}
 	}
 
+	[Sync]
+	private PlayerStatus _statusSync { get; set; }
+
 	private PlayerStatus _status;
 	public PlayerStatus Status
 	{
@@ -68,34 +59,34 @@ public partial class Player
 			var oldStatus = _status;
 			_status = value;
 
+			if ( Networking.IsHost )
+				_statusSync = value;
+
 			Event.Run( TTTEvent.Player.StatusChanged, this, oldStatus );
 		}
 	}
 
 	/// <summary>
-	/// Sets the <see cref="Status"/> to <see cref="PlayerStatus.ConfirmedDead"/>
-	/// then syncs it to everyone.
+	/// Sets Status to ConfirmedDead and syncs it to everyone.
 	/// </summary>
-	/// <param name="confirmer">The player who confirmed this player's death.</param>
 	public void ConfirmDeath( Player confirmer = null )
 	{
-		Game.AssertServer();
-		Assert.True( IsMissingInAction, $"{SteamName} is not MIA!" );
+		if ( !Networking.IsHost )
+			return;
 
 		Confirmer = confirmer;
 		Status = PlayerStatus.ConfirmedDead;
 
-		ClientConfirmDeath( confirmer );
+		BroadcastConfirmDeath( confirmer );
 	}
 
 	/// <summary>
-	/// Reveals the player's role.
-	/// If the player is MIA, confirm his death and send the player's corpse to everyone.
+	/// Reveals the player's role. If MIA, confirms death and sends corpse info.
 	/// </summary>
 	public void Reveal()
 	{
-		Game.AssertServer();
-		Assert.True( !IsSpectator );
+		if ( !Networking.IsHost )
+			return;
 
 		IsRoleKnown = true;
 
@@ -105,34 +96,36 @@ public partial class Player
 		if ( Corpse.IsValid() && !Corpse.IsFound )
 		{
 			Corpse.IsFound = true;
-			Corpse.SendPlayer( To.Everyone );
-			Corpse.ClientCorpseFound( To.Everyone, null );
+			Corpse.BroadcastFound( null );
 		}
 	}
 
 	/// <summary>
-	/// If the player is <see cref="PlayerStatus.MissingInAction"/>,
-	/// update the status for the client owner and <see cref="Team.Traitors"/>.
+	/// If MIA, updates status for this client's owner and all Traitors.
 	/// </summary>
 	public void UpdateMissingInAction()
 	{
-		Game.AssertServer();
-		Assert.True( IsMissingInAction, $"{SteamName} is not MIA!" );
+		if ( !Networking.IsHost )
+			return;
 
 		foreach ( var player in Utils.GetPlayersWhere( p => !p.IsAlive || p.Team == Team.Traitors ) )
-			UpdateStatus( To.Single( player.Client ) );
+			UpdateStatus( player.Network.Owner );
 	}
 
-	public void UpdateStatus( To to )
+	public void UpdateStatus( Connection to = null )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
-		ClientSetStatus( to, Status );
+		if ( to is null )
+			BroadcastSetStatus( Status );
+		else
+			BroadcastSetStatusSingle( to, Status );
 	}
 
 	private void CheckLastSeenPlayer()
 	{
-		if ( HoveredEntity is Player player && player.CanHint( this ) )
+		if ( HoveredPlayer is Player player && player.CanHint( this ) )
 			LastSeenPlayer = player;
 	}
 
@@ -144,34 +137,23 @@ public partial class Player
 		PlayersKilled.Clear();
 	}
 
-	[ClientRpc]
-	private void ClientConfirmDeath( Player confirmer )
+	[Broadcast]
+	private void BroadcastConfirmDeath( Player confirmer )
 	{
 		Confirmer = confirmer;
 		Status = PlayerStatus.ConfirmedDead;
 	}
 
-	[ClientRpc]
-	private void ClientSetStatus( PlayerStatus status )
+	[Broadcast]
+	private void BroadcastSetStatus( PlayerStatus status )
 	{
 		Status = status;
 	}
 
-	[GameEvent.Server.ClientJoined]
-	private void SyncClient( ClientJoinedEvent e )
+	[Broadcast( NetPermission.HostOnly )]
+	private void BroadcastSetStatusSingle( Connection to, PlayerStatus status )
 	{
-		if ( IsRoleKnown )
-			ClientSetRole( To.Single( e.Client ), Role.Info );
-
-		if ( IsSpectator )
-			UpdateStatus( To.Single( e.Client ) );
-		else if ( IsConfirmedDead )
-			ClientConfirmDeath( To.Single( e.Client ), Confirmer );
-
-		if ( Corpse.IsValid() && Corpse.IsFound )
-		{
-			Corpse.SendPlayer( To.Single( e.Client ) );
-			Corpse.ClientCorpseFound( To.Single( e.Client ), Corpse.Finder, true );
-		}
+		if ( Rpc.Caller == to )
+			Status = status;
 	}
 }

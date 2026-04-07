@@ -21,12 +21,12 @@ public partial class RoleButtonMarker : Panel
 		_roleInfo = GameResource.GetInfo<RoleInfo>( _roleButton.RoleName );
 		_maxViewDistance = roleButton.Radius;
 		_minViewDistance = Math.Min( _minViewDistance, _maxViewDistance / 2 );
-		Game.RootPanel.AddChild( this );
 	}
 
 	public override void Tick()
 	{
-		if ( Game.LocalPawn is not Player player )
+		var player = Player.Local;
+		if ( player is null )
 			return;
 
 		if ( !_roleButton.IsValid() )
@@ -42,10 +42,10 @@ public partial class RoleButtonMarker : Panel
 			return;
 		}
 
-		_screenPos = _roleButton.WorldSpaceBounds.Center.ToScreen();
-		Style.Opacity = Math.Clamp( 1f - (player.Position.Distance( _roleButton.Position ) - _minViewDistance) / (_maxViewDistance - _minViewDistance), 0f, 1f );
+		_screenPos = _roleButton.WorldPosition.ToScreen();
+		Style.Opacity = Math.Clamp( 1f - (player.WorldPosition.Distance( _roleButton.WorldPosition ) - _minViewDistance) / (_maxViewDistance - _minViewDistance), 0f, 1f );
 
-		if ( IsLookingAtRoleButton() && player.Position.Distance( _roleButton.Position ) <= _maxViewDistance )
+		if ( IsLookingAtRoleButton() && player.WorldPosition.Distance( _roleButton.WorldPosition ) <= _maxViewDistance )
 			Player.FocusedButton ??= _roleButton;
 		else if ( Player.FocusedButton == _roleButton )
 			Player.FocusedButton = null;

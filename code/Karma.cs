@@ -6,25 +6,25 @@ namespace TTT;
 
 public static class Karma
 {
-	[ConVar.Replicated( "ttt_karma_enabled", Help = "Whether or not the karma system is enabled.", Saved = true )]
+	[ConVar( "ttt_karma_enabled" )]
 	public static bool Enabled { get; set; } = true;
 
-	[ConVar.Server( "ttt_karma_low_autokick", Help = "Whether or not to kick a player with low karma.", Saved = true )]
+	[ConVar( "ttt_karma_low_autokick" )]
 	public static bool LowAutoKick { get; set; } = true;
 
-	[ConVar.Server( "ttt_karma_start", Help = "The starting karma value a player begins with.", Saved = true )]
+	[ConVar( "ttt_karma_start" )]
 	public static int StartValue { get; set; } = 1000;
 
-	[ConVar.Server( "ttt_karma_max", Help = "The maximum karma value a player can have.", Saved = true )]
+	[ConVar( "ttt_karma_max" )]
 	public static int MaxValue { get; set; } = 1100;
 
-	[ConVar.Server( "ttt_karma_min", Help = "The minimum karma a player can have before they get kicked.", Saved = true )]
+	[ConVar( "ttt_karma_min" )]
 	public static int MinValue { get; set; } = 500;
 
-	[ConVar.Replicated( "ttt_karma_min_speed_scale", Help = "The slowest movement speed multiplier low-karma players can be reduced to.", Saved = true )]
+	[ConVar( "ttt_karma_min_speed_scale" )]
 	public static float MinSpeedScale { get; set; } = 0.85f;
 
-	public static Dictionary<long, float> SavedPlayerValues { get; private set; } = new();
+	public static Dictionary<ulong, float> SavedPlayerValues { get; private set; } = new();
 
 	public const float CleanBonus = 30;
 	public const float FallOff = 0.25f;
@@ -99,24 +99,23 @@ public static class Karma
 	[TTTEvent.Player.Spawned]
 	private static void Apply( Player player )
 	{
-		if ( GameManager.Current.State is not PreRound )
+		if ( GameManager.Instance?.State is not PreRound )
 			return;
 
 		player.TimeUntilClean = 0;
 		ApplyRoundModifiers( player );
 	}
 
-
 	[TTTEvent.Player.TookDamage]
 	private static void OnPlayerTookDamage( Player player )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( GameManager.Current.State is not InProgress )
+		if ( GameManager.Instance?.State is not InProgress )
 			return;
 
-		var attacker = player.LastAttacker as Player;
+		var attacker = player.LastAttacker?.Components.Get<Player>( FindMode.InSelf );
 
 		if ( !attacker.IsValid() || !player.IsValid() )
 			return;
@@ -147,13 +146,13 @@ public static class Karma
 	[TTTEvent.Player.Killed]
 	private static void OnPlayerKilled( Player player )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( GameManager.Current.State is not InProgress )
+		if ( GameManager.Instance?.State is not InProgress )
 			return;
 
-		var attacker = player.LastAttacker as Player;
+		var attacker = player.LastAttacker?.Components.Get<Player>( FindMode.InSelf );
 
 		if ( !attacker.IsValid() || !player.IsValid() )
 			return;
@@ -200,18 +199,16 @@ public static class Karma
 	[TTTEvent.Round.End]
 	private static void OnRoundEnd( Team winningTeam, WinType winType )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		foreach ( var client in Game.Clients )
+		foreach ( var player in Utils.GetPlayersWhere( _ => true ) )
 		{
-			var player = client.Pawn as Player;
-
 			RoundIncrement( player );
 			Rebase( player );
 
 			if ( Enabled && CheckAutoKick( player ) )
-				client.Kick();
+				player.Network.Owner?.Kick();
 		}
 	}
 
@@ -220,9 +217,9 @@ public static class Karma
 		player.BaseKarma = player.ActiveKarma;
 	}
 
-	[GameEvent.Server.ClientDisconnect]
-	private static void SaveKarma( ClientDisconnectEvent e )
+	public static void SaveKarma( Player player )
 	{
-		SavedPlayerValues[e.Client.SteamId] = (e.Client.Pawn as Player).ActiveKarma;
+		if ( player.IsValid() )
+			SavedPlayerValues[player.SteamId] = player.ActiveKarma;
 	}
 }

@@ -14,29 +14,24 @@ public class Traitor : Role
 	{
 		base.OnSelect( player );
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 		{
-			if(((Player)Game.LocalPawn).Team == Team)
+			if ( Player.Local?.Team == Team )
 				player.Components.Create<UI.RolePlate>();
 
 			return;
 		}
 
-		foreach ( var client in Game.Clients )
+		foreach ( var otherPlayer in Utils.GetPlayersWhere( p => p != player ) )
 		{
-			if ( client == player.Client )
-				continue;
-
-			var otherPlayer = client.Pawn as Player;
-
 			if ( otherPlayer.Team == Team )
 			{
-				player.SendRole( To.Single( otherPlayer ) );
-				otherPlayer.SendRole( To.Single( player ) );
+				player.SendRole( otherPlayer.Network.Owner );
+				otherPlayer.SendRole( player.Network.Owner );
 			}
 
 			if ( otherPlayer.IsMissingInAction )
-				otherPlayer.UpdateStatus( To.Single( player ) );
+				otherPlayer.UpdateStatus( player.Network.Owner );
 		}
 	}
 }

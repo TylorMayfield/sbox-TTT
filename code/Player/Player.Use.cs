@@ -4,97 +4,52 @@ namespace TTT;
 
 public partial class Player
 {
-	[Net]
-	public Entity Using { get; protected set; }
+	public Carriable Using { get; protected set; }
 
 	/// <summary>
-	/// The entity we're currently looking at.
+	/// The carriable we're currently looking at.
 	/// </summary>
-	public Entity HoveredEntity { get; private set; }
+	public Carriable HoveredCarriable { get; private set; }
+
+	/// <summary>
+	/// The player we're currently looking at (for hints).
+	/// </summary>
+	public Player HoveredPlayer { get; private set; }
 
 	public const float UseDistance = 80f;
 	private float _traceDistance;
 
-	public bool CanUse( Entity entity )
+	public bool CanUse( Carriable carriable )
 	{
-		if ( entity is not IUse use )
+		if ( carriable is null )
 			return false;
 
-		if ( !use.IsUsable( this ) )
+		if ( !carriable.IsUsable( this ) )
 			return false;
 
-		if ( _traceDistance > UseDistance && FindUsablePoint( entity ) is null )
+		if ( _traceDistance > UseDistance && FindUsablePoint( carriable ) is null )
 			return false;
 
 		return true;
 	}
 
-	public bool CanContinueUsing( Entity entity )
+	public bool CanContinueUsing( Carriable carriable )
 	{
-		if ( HoveredEntity != entity )
+		if ( HoveredCarriable != carriable )
 			return false;
 
-		if ( _traceDistance > UseDistance && FindUsablePoint( entity ) is null )
+		if ( _traceDistance > UseDistance && FindUsablePoint( carriable ) is null )
 			return false;
 
-		if ( entity is IUse use && use.OnUse( this ) )
+		if ( carriable.OnUse( this ) )
 			return true;
 
 		return false;
 	}
 
-	public void StartUsing( Entity entity )
+	public void StartUsing( Carriable carriable )
 	{
-		Using = entity;
-	}
-
-	protected void PlayerUse()
-	{
-		HoveredEntity = FindHovered();
-
-		using ( Prediction.Off() )
-		{
-			if ( Input.Pressed( InputAction.Use ) )
-			{
-				if ( CanUse( HoveredEntity ) )
-					StartUsing( HoveredEntity );
-			}
-
-			if ( !Input.Down( InputAction.Use ) )
-			{
-				StopUsing();
-				return;
-			}
-
-			// There is no entity to use.
-			if ( !Using.IsValid() )
-				return;
-
-			if ( !CanContinueUsing( Using ) )
-				StopUsing();
-		}
-	}
-
-	protected Entity FindHovered()
-	{
-		var pos = Game.IsServer ? EyePosition : Camera.Position;
-		var forward = Game.IsServer ? EyePosition + EyeRotation.Forward * MaxHintDistance : Camera.Position + Camera.Rotation.Forward * MaxHintDistance;
-
-		var trace = Trace.Ray( pos, forward )
-			.WithAnyTags( "solid", "interactable" )
-			.UseHitboxes()
-			.Ignore( Game.IsServer ? this : UI.Hud.DisplayedPlayer )
-			.Run();
-
-		if ( !trace.Entity.IsValid() )
-			return null;
-
-		if ( trace.Entity.IsWorld )
-			return null;
-
-		_traceDistance = trace.Distance;
-
-		return trace.Entity;
+		Using = carriable;
 	}
 
 	protected void StopUsing()
@@ -102,18 +57,66 @@ public partial class Player
 		Using = null;
 	}
 
-	private Vector3? FindUsablePoint( Entity entity )
+	protected void PlayerUse()
 	{
-		if ( entity is null || entity.PhysicsGroup is null || entity.PhysicsGroup.BodyCount == 0 )
+		HoveredCarriable = FindHoveredCarriable();
+
+		if ( Input.Pressed( InputAction.Use ) )
+		{
+			if ( CanUse( HoveredCarriable ) )
+				StartUsing( HoveredCarriable );
+		}
+
+		if ( !Input.Down( InputAction.Use ) )
+		{
+			StopUsing();
+			return;
+		}
+
+		if ( !Using.IsValid() )
+			return;
+
+		if ( !CanContinueUsing( Using ) )
+			StopUsing();
+	}
+
+	protected GameObject FindHoveredGameObject()
+	{
+		var pos = EyePosition;
+		var forward = pos + EyeRotation.Forward * MaxHintDistance;
+
+		var trace = Scene.Trace.Ray( pos, forward )
+			.WithAnyTags( "solid", "interactable" )
+			.UseHitboxes()
+			.IgnoreGameObject( GameObject )
+			.Run();
+
+		if ( !trace.Hit )
 			return null;
 
-		foreach ( var body in entity.PhysicsGroup.Bodies )
-		{
-			var usablePoint = body.FindClosestPoint( EyePosition );
+		_traceDistance = trace.Distance;
+		return trace.GameObject;
+	}
 
-			if ( EyePosition.Distance( usablePoint ) <= UseDistance )
-				return usablePoint;
-		}
+	private Carriable FindHoveredCarriable()
+	{
+		var go = FindHoveredGameObject();
+		if ( go is null )
+			return null;
+
+		return go.Components.TryGet<Carriable>( out var c ) ? c : null;
+	}
+
+	private Vector3? FindUsablePoint( Carriable carriable )
+	{
+		if ( carriable is null )
+			return null;
+
+		var bounds = carriable.GameObject.GetBounds();
+		var closestPoint = bounds.ClosestPoint( EyePosition );
+
+		if ( EyePosition.Distance( closestPoint ) <= UseDistance )
+			return closestPoint;
 
 		return null;
 	}

@@ -5,7 +5,6 @@ namespace TTT;
 [Category( "Ammo" )]
 [ClassName( "ttt_ammo_magnum" )]
 [EditorModel( "models/ammo/ammo_magnum/ammo_magnum.vmdl" )]
-[HammerEntity]
 [Title( "Magnum Ammo" )]
 public class MagnumAmmo : Ammo
 {

@@ -7,12 +7,11 @@ public class FirstPersonCamera : CameraMode
 	public FirstPersonCamera( Player viewer = null )
 	{
 		Spectating.Player = viewer;
-		Camera.FirstPersonViewer = viewer ?? Game.LocalPawn;
 	}
 
 	public override void BuildInput()
 	{
-		if ( Game.LocalPawn is not Player player || player.Status == PlayerStatus.Alive )
+		if ( Player.Local is not Player player || player.Status == PlayerStatus.Alive )
 			return;
 
 		if ( !Spectating.Player.IsValid() || Input.Pressed( InputAction.Jump ) )
@@ -28,21 +27,24 @@ public class FirstPersonCamera : CameraMode
 			Spectating.FindPlayer( true );
 	}
 
-	public override void FrameSimulate( IClient client )
+	public override void FrameSimulate()
 	{
+		var cam = Game.ActiveScene?.Camera;
+		if ( cam is null )
+			return;
+
 		var target = UI.Hud.DisplayedPlayer;
+		if ( target is null )
+			return;
 
-		Camera.Position = target.EyePosition;
-		Camera.Rotation = !target.IsLocalPawn ? Rotation.Slerp( Camera.Rotation, target.EyeRotation, Time.Delta * 20f ) : target.ViewAngles.ToRotation();
-		Camera.FirstPersonViewer = target;
+		cam.WorldPosition = target.EyePosition;
+		cam.WorldRotation = !target.IsProxy
+			? target.ViewAngles.ToRotation()
+			: Rotation.Slerp( cam.WorldRotation, target.EyeRotation, Time.Delta * 20f );
 
-		// TODO: We need some way to override the FieldOfView from a carriable.
-		// We also need to constantly update the field of view here incase the player changes their settings.
 		if ( target.ActiveCarriable is Scout || target.ActiveCarriable is Binoculars )
 			return;
 
-		Camera.FieldOfView = Screen.CreateVerticalFieldOfView( Game.Preferences.FieldOfView );
-		var viewModelFov = Camera.FieldOfView + 6f;
-		Camera.Main.SetViewModelCamera( viewModelFov.Clamp( 70f, 86f ) );
+		cam.FieldOfView = Screen.CreateVerticalFieldOfView( Preferences.FieldOfView );
 	}
 }

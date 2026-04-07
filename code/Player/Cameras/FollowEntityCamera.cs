@@ -4,28 +4,28 @@ namespace TTT;
 
 public class FollowEntityCamera : CameraMode
 {
-	private Entity _followedEntity;
-	private Vector3 _focusPoint = Camera.Position;
+	private GameObject _followedObject;
+	private Vector3 _focusPoint;
 
-	public FollowEntityCamera( Entity entity )
+	public FollowEntityCamera( GameObject go )
 	{
-		_followedEntity = entity;
+		_followedObject = go;
 
-		if ( _followedEntity is Player player )
+		if ( go?.Components.TryGet<Player>( out var player ) == true )
 			Spectating.Player = player;
 
-		Camera.FirstPersonViewer = null;
+		_focusPoint = go?.WorldPosition ?? Vector3.Zero;
 	}
 
 	public override void BuildInput()
 	{
-		if ( !_followedEntity.IsValid() )
+		if ( !_followedObject.IsValid() )
 		{
 			Current = new FreeCamera();
 			return;
 		}
 
-		if ( _followedEntity is Corpse && Input.Pressed( InputAction.Jump ) )
+		if ( _followedObject.Components.TryGet<Corpse>( out _ ) && Input.Pressed( InputAction.Jump ) )
 		{
 			Current = new FreeCamera();
 			return;
@@ -44,22 +44,27 @@ public class FollowEntityCamera : CameraMode
 			else if ( Input.Pressed( InputAction.SecondaryAttack ) )
 				Spectating.FindPlayer( true );
 
-			_followedEntity = Spectating.Player;
+			_followedObject = Spectating.Player?.GameObject;
 		}
 	}
 
-	public override void FrameSimulate( IClient client )
+	public override void FrameSimulate()
 	{
-		if ( client.Pawn is not Player player || !_followedEntity.IsValid() )
+		var player = Player.Local;
+		if ( player is null || !_followedObject.IsValid() )
 			return;
 
-		_focusPoint = Vector3.Lerp( _focusPoint, _followedEntity.WorldSpaceBounds.Center, Time.Delta * 5.0f );
+		var cam = Game.ActiveScene?.Camera;
+		if ( cam is null )
+			return;
 
-		var tr = Trace.Ray( _focusPoint, _focusPoint + player.ViewAngles.ToRotation().Forward * -130 )
+		_focusPoint = Vector3.Lerp( _focusPoint, _followedObject.WorldPosition, Time.Delta * 5.0f );
+
+		var tr = Game.ActiveScene.Trace.Ray( _focusPoint, _focusPoint + player.ViewAngles.ToRotation().Forward * -130 )
 			.StaticOnly()
 			.Run();
 
-		Camera.Rotation = player.ViewAngles.ToRotation();
-		Camera.Position = tr.EndPosition;
+		cam.WorldRotation = player.ViewAngles.ToRotation();
+		cam.WorldPosition = tr.EndPosition;
 	}
 }

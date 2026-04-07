@@ -4,7 +4,6 @@ namespace TTT;
 
 public partial class Player
 {
-	[Net]
 	public Prop Prop { get; private set; }
 
 	public void SimulatePossession()
@@ -16,38 +15,38 @@ public partial class Player
 		}
 
 		if ( Input.Pressed( InputAction.Jump ) || InputDirection.x != 0f || InputDirection.y != 0f )
-			Prop.Components.Get<PropPossession>().Punch();
+			Prop?.Components.Get<PropPossession>()?.Punch();
 	}
 
-	[GameEvent.Entity.PreCleanup]
 	public void CancelPossession()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		if ( Prop.IsValid() )
 		{
 			Prop.Components.RemoveAny<PropPossession>();
-			Prop.Owner = null;
 		}
 
 		Prop = null;
 	}
 
-	[ConCmd.Server]
-	public static void Possess( int propNetworkIdent )
+	[ConCmd( "ttt_possess_prop" )]
+	public static void PossessCmd( int goIdHash )
 	{
-		if ( ConsoleSystem.Caller.Pawn is not Player player )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( player.IsAlive || player.Prop.IsValid() )
+		var player = GameManager.Instance?.FindPlayerByConnection( Rpc.Caller );
+		if ( player is null || player.IsAlive || player.Prop.IsValid() )
 			return;
 
-		var target = FindByIndex( propNetworkIdent );
-		if ( target is not Prop prop || !prop.IsValid() || prop.PhysicsBody is null || target.Owner is not null )
+		var prop = Game.ActiveScene?.GetAllComponents<Prop>()
+			.FirstOrDefault( p => p.GameObject.Id.GetHashCode() == goIdHash );
+
+		if ( prop is null || !prop.IsValid() )
 			return;
 
-		prop.Owner = player;
 		prop.Components.GetOrCreate<PropPossession>();
 		player.Prop = prop;
 	}

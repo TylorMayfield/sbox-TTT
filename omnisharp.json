@@ -1,5 +1,22 @@
 {
     "RoslynExtensionsOptions": {
         "enableAnalyzersSupport": true
+    },
+    "omnisharp": {
+        "loggingLevel": "debug",
+        "enableEditorConfigSupport": true,
+        "enableRoslynAnalyzers": true,
+        "analyzeOpenDocumentsOnly": false
+    },
+    "net": {
+        "enableNullableReferenceTypes": false
+    },
+    "script": {
+        "enableScriptNuGetReferences": true
+    },
+    "msbuild": {
+        "useLegacyPowerShell": false,
+        "projectLoadTimeout": 10000,
+        "loadProjectsOnDemand": false
     }
 }

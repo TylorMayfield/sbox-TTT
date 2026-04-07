@@ -7,7 +7,6 @@ namespace TTT;
 [Category( "Grenades" )]
 [ClassName( "ttt_grenade_discombobulator" )]
 [EditorModel( "models/weapons/w_frag.vmdl" )]
-[HammerEntity]
 [Title( "Discombobulator" )]
 public class Discombobulator : Grenade
 {
@@ -18,60 +17,22 @@ public class Discombobulator : Grenade
 	{
 		base.OnExplode();
 
-		Particles.Create( Particle, Position );
-		Sound.FromWorld( ExplodeSound, Position );
+		SceneParticles.PlayInstant( Scene, Particle, new Transform( WorldPosition ) );
+		Sound.Play( ExplodeSound, WorldPosition );
 
 		var radius = 400f;
 		var pushForce = 1024f;
 
-		foreach ( var entity in FindInSphere( Position, radius ) )
+		// Push all players and rigidbodies in range
+		foreach ( var player in Utils.GetPlayersWhere( p => p.IsAlive ) )
 		{
-			if ( entity is not ModelEntity target || !target.IsValid() )
-				continue;
-
-			if ( target.LifeState == LifeState.Dead )
-				continue;
-
-			if ( !target.PhysicsBody.IsValid() )
-				continue;
-
-			if ( target.IsWorld )
-				continue;
-
-			// Ported over code from GMod, doesn't translate well to s&box
-			/*		
-			var dir = (targetPos - Position).Normal;
-			var phys = entity.PhysicsBody;
-			if ( entity is Player )
-			{
-				dir.z = Math.Abs( dir.z ) + 1;
-				var push = dir * pushForce;
-				var velocity = entity.Velocity + push;
-				velocity.z = Math.Min( velocity.z, pushForce );
-				if ( entity == PreviousOwner && !AllowJump )
-				{
-					velocity = Vector3.Random * velocity.Length;
-					velocity.z = Math.Abs( velocity.z );
-				}
-				entity.Velocity = velocity;
-			}
-			else
-			{
-				phys.ApplyForceAt( phys.MassCenter, physForce );
-			}
-			*/
-
-			var targetPos = target.PhysicsBody.MassCenter;
-
-			if ( target is Player )
-				targetPos += Vector3.Up * 63;
-
-			var dist = Vector3.DistanceBetween( Position, targetPos );
+			var targetPos = player.WorldPosition + Vector3.Up * 63;
+			var dist = Vector3.DistanceBetween( WorldPosition, targetPos );
 			if ( dist > radius )
 				continue;
 
-			var trace = Trace.Ray( Position, targetPos )
-				.Ignore( this )
+			var trace = Scene.Trace.Ray( WorldPosition, targetPos )
+				.IgnoreGameObject( GameObject )
 				.StaticOnly()
 				.Run();
 
@@ -80,15 +41,38 @@ public class Discombobulator : Grenade
 
 			var distanceMul = 1.0f - Math.Clamp( dist / radius, 0.0f, 1.0f );
 			var force = pushForce * distanceMul;
-			var forceDir = (targetPos - Position).Normal;
+			var forceDir = (targetPos - WorldPosition).Normal;
 
-			target.GroundEntity = null;
-			target.Velocity += force * forceDir;
+			player.CharController.Punch( force * forceDir );
 		}
-	}
 
-	static Discombobulator()
-	{
-		Precache.Add( Particle );
+		// Push physics props in range
+		foreach ( var rb in Scene.GetAllComponents<Rigidbody>() )
+		{
+			if ( rb.GameObject == GameObject )
+				continue;
+
+			var targetPos = rb.PhysicsBody?.MassCenter ?? rb.WorldPosition;
+			var dist = Vector3.DistanceBetween( WorldPosition, targetPos );
+			if ( dist > radius )
+				continue;
+
+			if ( !rb.PhysicsBody.IsValid() )
+				continue;
+
+			var trace = Scene.Trace.Ray( WorldPosition, targetPos )
+				.IgnoreGameObject( GameObject )
+				.StaticOnly()
+				.Run();
+
+			if ( trace.Fraction < 0.98f )
+				continue;
+
+			var distanceMul = 1.0f - Math.Clamp( dist / radius, 0.0f, 1.0f );
+			var force = pushForce * distanceMul;
+			var forceDir = (targetPos - WorldPosition).Normal;
+
+			rb.PhysicsBody.ApplyForceAt( rb.PhysicsBody.MassCenter, forceDir * force );
+		}
 	}
 }

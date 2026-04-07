@@ -10,10 +10,8 @@ public partial class InProgress : BaseState
 	public List<Player> Spectators { get; set; }
 
 	/// <summary>
-	/// Unique case where InProgress has a seperate fake timer for Innocents.
-	/// The real timer is only displayed to Traitors as it increments every player death during the round.
+	/// Fake timer shown to Innocents. The real timer increments with each death.
 	/// </summary>
-	[Net]
 	public TimeUntil FakeTime { get; private set; }
 	public string FakeTimeFormatted => FakeTime.Relative.TimerFormat();
 
@@ -21,7 +19,6 @@ public partial class InProgress : BaseState
 	public override int Duration => GameManager.InProgressTime;
 
 	private int _innocentTeamDeathCount = 0;
-	private readonly List<RoleButton> _logicButtons = new();
 
 	public override void OnPlayerKilled( Player player )
 	{
@@ -32,17 +29,21 @@ public partial class InProgress : BaseState
 		if ( player.Team == Team.Innocents )
 			_innocentTeamDeathCount += 1;
 
-		var percentDead = (float)_innocentTeamDeathCount / Team.Innocents.GetCount();
-		if ( percentDead >= GameManager.CreditsAwardPercentage )
+		var playerCount = Team.Innocents.GetCount();
+		if ( playerCount > 0 )
 		{
-			GivePlayersCredits<Traitor>( GameManager.CreditsAwarded );
-			_innocentTeamDeathCount = 0;
+			var percentDead = (float)_innocentTeamDeathCount / playerCount;
+			if ( percentDead >= GameManager.CreditsAwardPercentage )
+			{
+				GivePlayersCredits<Traitor>( GameManager.CreditsAwarded );
+				_innocentTeamDeathCount = 0;
+			}
 		}
 
 		if ( player.Role is Traitor )
 			GivePlayersCredits<Detective>( GameManager.DetectiveTraitorDeathReward );
-		else if ( player.Role is Detective && player.LastAttacker is Player p && p.IsAlive && p.Team == Team.Traitors )
-			GiveTraitorCredits( p );
+		else if ( player.Role is Detective && player.LastAttacker is Player attacker && attacker.IsAlive && attacker.Team == Team.Traitors )
+			GiveTraitorCredits( attacker );
 
 		AlivePlayers.Remove( player );
 		Spectators.Add( player );
@@ -55,7 +56,7 @@ public partial class InProgress : BaseState
 		base.OnPlayerJoin( player );
 
 		player.Status = PlayerStatus.Spectator;
-		player.UpdateStatus( To.Everyone );
+		player.UpdateStatus();
 
 		Spectators.Add( player );
 	}
@@ -72,25 +73,23 @@ public partial class InProgress : BaseState
 	{
 		Event.Run( TTTEvent.Round.Start );
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		FakeTime = TimeLeft;
 
-		// If the map isn't armed for TTT, just give the player(s) a fixed loadout.
+		MapHandler.CountMapWeapons();
+
+		// If the map isn't armed for TTT, give players a fixed loadout.
 		if ( MapHandler.WeaponCount == 0 )
 		{
 			foreach ( var player in AlivePlayers )
 				GiveFixedLoadout( player );
 		}
 
-		foreach ( var ent in Entity.All )
-		{
-			if ( ent is RoleButton button )
-				_logicButtons.Add( button );
-			else if ( ent is Corpse corpse )
-				corpse.Delete();
-		}
+		// Clean up corpses from last round
+		foreach ( var corpse in Game.ActiveScene.GetAllComponents<Corpse>() )
+			corpse.GameObject.Destroy();
 	}
 
 	private static void GiveFixedLoadout( Player player )
@@ -104,7 +103,7 @@ public partial class InProgress : BaseState
 
 	public override void OnSecond()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 #if DEBUG
@@ -133,7 +132,7 @@ public partial class InProgress : BaseState
 
 	private Team CheckForElimination()
 	{
-		HashSet<Team> aliveTeams = new();
+		var aliveTeams = new HashSet<Team>();
 		foreach ( var player in AlivePlayers )
 			aliveTeams.Add( player.Team );
 
@@ -142,20 +141,20 @@ public partial class InProgress : BaseState
 
 	private static void GivePlayersCredits<T>( int credits ) where T : Role
 	{
-		var clients = Utils.GetClientsWhere( p => p.IsAlive && p.Role is T );
-		clients.ForEach( c => (c.Pawn as Player).Credits += credits );
-
-		UI.InfoFeed.AddRoleEntry
-		(
-			To.Multiple( clients ),
-			GameResource.GetInfo<RoleInfo>( typeof( T ) ),
-			$"You have been awarded {credits} credits for your performance."
-		);
+		foreach ( var player in Utils.GetPlayersWhere( p => p.IsAlive && p.Role is T ) )
+		{
+			player.Credits += credits;
+			UI.InfoFeed.AddRoleEntry(
+				player,
+				GameResource.GetInfo<RoleInfo>( typeof( T ) ),
+				$"You have been awarded {credits} credits for your performance."
+			);
+		}
 	}
 
 	private static void GiveTraitorCredits( Player traitor )
 	{
 		traitor.Credits += GameManager.TraitorDetectiveKillReward;
-		UI.InfoFeed.AddEntry( To.Single( traitor.Client ), traitor, $"have received {GameManager.TraitorDetectiveKillReward} credits for killing a Detective" );
+		UI.InfoFeed.AddEntry( traitor, $"have received {GameManager.TraitorDetectiveKillReward} credits for killing a Detective" );
 	}
 }

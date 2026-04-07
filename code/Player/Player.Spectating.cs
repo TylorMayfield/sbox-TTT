@@ -2,20 +2,16 @@ using Sandbox;
 
 namespace TTT;
 
-
 public partial class Player
 {
-	public bool IsForcedSpectator => Client.GetClientData<bool>( "forced_spectator" );
+	public bool IsForcedSpectator => Network.Owner?.GetValue( "forced_spectator", false ) == true;
 	public bool IsSpectator => Status == PlayerStatus.Spectator;
 
 	public void MakeSpectator()
 	{
-		Client.Voice.WantsStereo = true;
-		Controller = null;
-		EnableAllCollisions = false;
-		EnableDrawing = false;
-		EnableTouch = false;
+		CharController.Enabled = false;
+		Renderer.Enabled = false;
 		Health = 0f;
-		LifeState = LifeState.Dead;
+		Status = PlayerStatus.Dead;
 	}
 }

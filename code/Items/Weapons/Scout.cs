@@ -6,7 +6,6 @@ namespace TTT;
 [Category( "Weapons" )]
 [ClassName( "ttt_weapon_scout" )]
 [EditorModel( "models/weapons/w_spr.vmdl" )]
-[HammerEntity]
 [Title( "Scout" )]
 public class Scout : Weapon
 {
@@ -20,21 +19,15 @@ public class Scout : Weapon
 		base.ActiveStart( player );
 
 		IsScoped = false;
-		_defaultFOV = Camera.FieldOfView;
+		_defaultFOV = Game.ActiveScene?.Camera?.FieldOfView ?? 90f;
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
-		if ( Game.IsClient && Input.Pressed( InputAction.SecondaryAttack ) )
-		{
-			if ( Prediction.FirstTime )
-			{
-				SetScoped( !IsScoped );
-				PlaySound( "scope_in" );
-			}
-		}
+		if ( !IsProxy && Input.Pressed( InputAction.SecondaryAttack ) )
+			SetScoped( !IsScoped );
 
-		base.Simulate( client );
+		base.Simulate( player );
 	}
 
 	public override void BuildInput()
@@ -42,21 +35,23 @@ public class Scout : Weapon
 		base.BuildInput();
 
 		if ( IsScoped )
-			Owner.ViewAngles = Angles.Lerp( Owner.OriginalViewAngles, Owner.ViewAngles, 0.2f );
+			Owner.ViewAngles = Angles.Lerp( Owner.ViewAngles, Owner.ViewAngles, 0.2f );
 	}
 
 	protected override void CreateHudElements()
 	{
 		base.CreateHudElements();
 
-		_sniperScopePanel = new UI.Scope() { Parent = Game.RootPanel, ScopePath = "/ui/scout-scope.png" };
+		_sniperScopePanel = new UI.Scope() { ScopePath = "/ui/scout-scope.png" };
 	}
 
 	protected override void DestroyHudElements()
 	{
 		base.DestroyHudElements();
 
-		Camera.FieldOfView = _defaultFOV;
+		if ( Game.ActiveScene?.Camera is { } cam )
+			cam.FieldOfView = _defaultFOV;
+
 		_sniperScopePanel?.Delete( true );
 	}
 
@@ -65,13 +60,14 @@ public class Scout : Weapon
 		IsScoped = isScoped;
 
 		if ( IsScoped )
-			_sniperScopePanel.Show();
+			_sniperScopePanel?.Show();
 		else
-			_sniperScopePanel.Hide();
+			_sniperScopePanel?.Hide();
 
-		ViewModelEntity.EnableDrawing = !IsScoped;
-		HandsModelEntity.EnableDrawing = !IsScoped;
+		if ( ViewModelRenderer is not null )
+			ViewModelRenderer.Enabled = !IsScoped;
 
-		Camera.FieldOfView = isScoped ? 20f : _defaultFOV;
+		if ( Game.ActiveScene?.Camera is { } cam )
+			cam.FieldOfView = isScoped ? 20f : _defaultFOV;
 	}
 }

@@ -7,7 +7,6 @@ namespace TTT;
 [Category( "Equipment" )]
 [ClassName( "ttt_equipment_cigar" )]
 [EditorModel( "models/cigar/cigar.vmdl" )]
-[HammerEntity]
 [Title( "Cigar" )]
 public class Cigar : Carriable
 {
@@ -17,16 +16,8 @@ public class Cigar : Carriable
 	};
 
 	private TimeUntil _timeUntilNextSmoke = 0;
-	private Particles _trailParticle;
 
-	public override void ActiveEnd( Player player, bool dropped )
-	{
-		base.ActiveEnd( player, dropped );
-
-		_trailParticle?.Destroy( true );
-	}
-
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( Input.Pressed( InputAction.PrimaryAttack ) && _timeUntilNextSmoke )
 			Smoke();
@@ -36,11 +27,21 @@ public class Cigar : Carriable
 	{
 		_timeUntilNextSmoke = 5;
 
-		Particles.Create( "particles/cigar/smokepuff", this, "muzzle" );
-		_trailParticle = null;
-		_trailParticle ??= Particles.Create( "particles/muzzle/barrel_smoke", this, "muzzle" );
+		var attachment = WorldRenderer?.GetAttachment( "muzzle" );
+		if ( attachment.HasValue )
+		{
+			SceneParticles.PlayInstant( Scene, "particles/cigar/smokepuff", attachment.Value );
+			SceneParticles.PlayInstant( Scene, "particles/muzzle/barrel_smoke", attachment.Value );
+		}
 
-		if ( Game.IsServer )
-			Owner.TakeDamage( DamageInfo.Generic( 1 ).WithAttacker( Owner ).WithWeapon( this ) );
+		if ( Networking.IsHost )
+		{
+			var damageInfo = new DamageInfo()
+				.WithDamage( 1 )
+				.WithAttacker( Owner.GameObject )
+				.WithWeapon( GameObject );
+
+			Owner.TakeDamage( damageInfo );
+		}
 	}
 }

@@ -2,12 +2,9 @@ using Sandbox;
 
 namespace TTT;
 
-public abstract partial class BaseState : BaseNetworkable
+public abstract partial class BaseState
 {
-	[Net]
 	public TimeUntil TimeLeft { get; protected set; }
-
-	[Net]
 	public bool HasStarted { get; private set; }
 
 	public virtual int Duration => 0;
@@ -18,7 +15,7 @@ public abstract partial class BaseState : BaseNetworkable
 
 	public void Start()
 	{
-		if ( Game.IsServer && Duration > 0 )
+		if ( Networking.IsHost && Duration > 0 )
 			TimeLeft = Duration;
 
 		OnStart();
@@ -26,7 +23,7 @@ public abstract partial class BaseState : BaseNetworkable
 
 	public void Finish()
 	{
-		if ( Game.IsServer )
+		if ( Networking.IsHost )
 			TimeLeft = 0f;
 
 		OnFinish();
@@ -34,7 +31,7 @@ public abstract partial class BaseState : BaseNetworkable
 
 	public virtual void OnPlayerSpawned( Player player )
 	{
-		GameManager.Current.MoveToSpawnpoint( player );
+		GameManager.Instance.MoveToSpawnpoint( player );
 	}
 
 	public virtual void OnPlayerKilled( Player player )
@@ -60,7 +57,7 @@ public abstract partial class BaseState : BaseNetworkable
 
 	public virtual void OnSecond()
 	{
-		if ( Game.IsServer && TimeLeft )
+		if ( Networking.IsHost && TimeLeft )
 			OnTimeUp();
 	}
 
@@ -72,7 +69,8 @@ public abstract partial class BaseState : BaseNetworkable
 
 	protected static void RevealEveryone()
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		foreach ( var player in Utils.GetPlayersWhere( p => !p.IsSpectator ) )
 			player.Reveal();
@@ -82,7 +80,7 @@ public abstract partial class BaseState : BaseNetworkable
 	{
 		await GameTask.DelaySeconds( 1 );
 
-		if ( player.IsValid() && GameManager.Current.State == this )
+		if ( player.IsValid() && GameManager.Instance.State == this )
 			player.Respawn();
 	}
 }

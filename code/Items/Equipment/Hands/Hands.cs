@@ -8,7 +8,7 @@ public interface IGrabbable
 	string PrimaryAttackHint { get; }
 	string SecondaryAttackHint { get; }
 	bool IsHolding { get; }
-	Entity Drop();
+	GameObject Drop();
 	void Update( Player player );
 	void SecondaryAction();
 }
@@ -18,10 +18,8 @@ public interface IGrabbable
 [Title( "Hands" )]
 public partial class Hands : Carriable
 {
-	// Since everything happens on server, network the current hints
-	// for the client to display.
-	[Net, Local] private string CurrentPrimaryHint { get; set; }
-	[Net, Local] private string CurrentSecondaryHint { get; set; }
+	[Sync] private string CurrentPrimaryHint { get; set; }
+	[Sync] private string CurrentSecondaryHint { get; set; }
 
 	public override List<UI.BindingPrompt> BindingPrompts => new()
 	{
@@ -29,7 +27,7 @@ public partial class Hands : Carriable
 		new( InputAction.SecondaryAttack, !CurrentSecondaryHint.IsNullOrEmpty() ? CurrentSecondaryHint : "Push" ),
 	};
 
-	public Entity GrabPoint { get; private set; }
+	public GameObject GrabPoint { get; private set; }
 	public const string MiddleHandsAttachment = "middle_of_both_hands";
 
 	private bool IsHoldingEntity => _grabbedEntity is not null && _grabbedEntity.IsHolding;
@@ -40,9 +38,9 @@ public partial class Hands : Carriable
 	private const float PushForce = 350f;
 	private readonly Vector3 _maxPickupSize = new( 26, 22, 50 );
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		if ( Input.Pressed( InputAction.PrimaryAttack ) )
@@ -85,15 +83,16 @@ public partial class Hands : Carriable
 		if ( IsPushing )
 			return;
 
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
-				.Ignore( Owner )
-				.Run();
+		var trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
+			.IgnoreGameObject( Owner.GameObject )
+			.Run();
 
-		if ( !trace.Hit || !trace.Entity.IsValid() || trace.Entity.IsWorld )
+		if ( !trace.Hit || trace.GameObject is null )
 			return;
 
-		trace.Entity.Velocity += Owner.EyeRotation.Forward * PushForce;
-		trace.Entity.LastAttacker = Owner;
+		var rb = trace.GameObject.Components.Get<Rigidbody>();
+		if ( rb?.PhysicsBody is not null )
+			rb.PhysicsBody.Velocity += Owner.EyeRotation.Forward * PushForce;
 
 		IsPushing = true;
 
@@ -109,35 +108,37 @@ public partial class Hands : Carriable
 		var eyePos = Owner.EyePosition;
 		var eyeDir = Owner.EyeRotation.Forward;
 
-		var trace = Trace.Ray( eyePos, eyePos + eyeDir * Player.UseDistance )
+		var trace = Scene.Trace.Ray( eyePos, eyePos + eyeDir * Player.UseDistance )
 			.UseHitboxes()
-			.Ignore( Owner )
+			.IgnoreGameObject( Owner.GameObject )
 			.WithAnyTags( "solid", "interactable" )
-			.DynamicOnly()
 			.Run();
 
-		if ( !trace.Hit || !trace.Entity.IsValid() || !trace.Body.IsValid() || trace.Body.BodyType != PhysicsBodyType.Dynamic )
+		if ( !trace.Hit || trace.GameObject is null || trace.Body is null )
 			return;
 
-		if ( trace.Entity is Player )
+		if ( trace.Body.BodyType != PhysicsBodyType.Dynamic )
+			return;
+
+		if ( trace.GameObject.Components.TryGet<Player>( out _ ) )
 			return;
 
 		// Cannot pickup items held by other players.
-		if ( trace.Entity.Parent.IsValid() )
+		if ( trace.GameObject.Parent.IsValid() )
 			return;
 
-		switch ( trace.Entity )
+		if ( trace.GameObject.Components.TryGet<Corpse>( out var corpse ) )
 		{
-			case Corpse corpse:
-				_grabbedEntity = new GrabbableCorpse( Owner, corpse );
-				break;
-			case Carriable: // Ignore any size requirements, any weapon can be picked up.
-				_grabbedEntity = new GrabbableProp( Owner, trace.Entity as ModelEntity );
-				break;
-			case ModelEntity model:
-				if ( CanPickup( model ) )
-					_grabbedEntity = new GrabbableProp( Owner, model );
-				break;
+			_grabbedEntity = new GrabbableCorpse( Owner, corpse );
+		}
+		else if ( trace.GameObject.Components.TryGet<Carriable>( out _ ) )
+		{
+			_grabbedEntity = new GrabbableProp( Owner, trace.GameObject );
+		}
+		else
+		{
+			if ( CanPickup( trace.GameObject ) )
+				_grabbedEntity = new GrabbableProp( Owner, trace.GameObject );
 		}
 	}
 
@@ -145,60 +146,69 @@ public partial class Hands : Carriable
 	{
 		base.OnCarryStart( player );
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		GrabPoint = new ModelEntity( "models/hands/grabpoint.vmdl" );
-		GrabPoint.EnableHideInFirstPerson = false;
-		GrabPoint.SetParent( player, MiddleHandsAttachment, new Transform( Vector3.Zero ) );
+		GrabPoint = new GameObject( true, "GrabPoint" );
+		var renderer = GrabPoint.Components.Create<ModelRenderer>();
+		renderer.Model = Model.Load( "models/hands/grabpoint.vmdl" );
+		GrabPoint.Parent = player.GameObject;
 	}
 
 	public override void OnCarryDrop( Player player )
 	{
 		base.OnCarryDrop( player );
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		_grabbedEntity?.Drop();
-		GrabPoint?.Delete();
+		GrabPoint?.Destroy();
+		GrabPoint = null;
 	}
 
 	public override void ActiveEnd( Player player, bool dropped )
 	{
 		_grabbedEntity?.Drop();
+		_grabbedEntity = null;
 
 		base.ActiveEnd( player, dropped );
 	}
 
-	public override void SimulateAnimator( CitizenAnimationHelper anim )
+	public override void SimulateAnimator( SkinnedModelRenderer renderer )
 	{
-		if ( !Game.IsServer )
-			return;
-
 		if ( IsHoldingEntity || IsPushing )
 		{
-			anim.HoldType = CitizenAnimationHelper.HoldTypes.HoldItem;
-			anim.Handedness = 0;
+			renderer.Set( "holdtype", 4 ); // HoldItem
+			renderer.Set( "holdtype_handedness", 0 );
 		}
 		else
 		{
-			anim.HoldType = CitizenAnimationHelper.HoldTypes.None;
+			renderer.Set( "holdtype", 0 ); // None
 		}
 	}
 
-	private bool CanPickup( ModelEntity entity )
+	private bool CanPickup( GameObject go )
 	{
-		if ( entity.PhysicsGroup.Mass > MaxPickupMass )
+		var rb = go.Components.Get<Rigidbody>();
+		if ( rb?.PhysicsBody is null )
 			return false;
 
-		var size = entity.CollisionBounds.Size;
-		return size.x < _maxPickupSize.x && size.y < _maxPickupSize.y && size.y < _maxPickupSize.z;
+		if ( rb.PhysicsBody.Mass > MaxPickupMass )
+			return false;
+
+		var modelRenderer = go.Components.Get<ModelRenderer>();
+		if ( modelRenderer is null )
+			return false;
+
+		var size = modelRenderer.LocalBounds.Size;
+		return size.x < _maxPickupSize.x && size.y < _maxPickupSize.y && size.z < _maxPickupSize.z;
 	}
 
-	[GameEvent.Entity.PreCleanup]
-	private void OnPreCleanup()
+	[TTTEvent.Round.End]
+	private void OnRoundEnd( Team winningTeam, WinType winType )
 	{
 		_grabbedEntity?.Drop();
+		_grabbedEntity = null;
 	}
 }

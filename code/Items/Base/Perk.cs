@@ -2,23 +2,13 @@ using Sandbox;
 
 namespace TTT;
 
-public abstract class Perk : EntityComponent<Player>
+public abstract class Perk : Component
 {
 	public virtual string SlotText => string.Empty;
 	public PerkInfo Info { get; private set; }
 
-	public Perk()
+	protected override void OnStart()
 	{
 		Info = GameResource.GetInfo<PerkInfo>( GetType() );
 	}
-
-	public virtual void Simulate( IClient client ) { }
-
-#if SANDBOX && DEBUG
-	[Event.Hotload]
-	private void OnHotload()
-	{
-		Info = GameResource.GetInfo<PerkInfo>( GetType() );
-	}
-#endif
 }

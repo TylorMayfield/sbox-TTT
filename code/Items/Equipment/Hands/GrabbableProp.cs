@@ -5,10 +5,10 @@ namespace TTT;
 
 public class GrabbableProp : IGrabbable
 {
-	private ModelEntity GrabbedEntity { get; set; }
-	public string PrimaryAttackHint => GrabbedEntity.IsValid() ? "Throw" : string.Empty;
-	public string SecondaryAttackHint => GrabbedEntity.IsValid() ? "Drop" : string.Empty;
-	public bool IsHolding => GrabbedEntity.IsValid() || _isThrowing;
+	private GameObject GrabbedGo { get; set; }
+	public string PrimaryAttackHint => GrabbedGo.IsValid() ? "Throw" : string.Empty;
+	public string SecondaryAttackHint => GrabbedGo.IsValid() ? "Drop" : string.Empty;
+	public bool IsHolding => GrabbedGo.IsValid() || _isThrowing;
 
 	private readonly Player _owner;
 	private bool _isThrowing = false;
@@ -16,47 +16,47 @@ public class GrabbableProp : IGrabbable
 	private PhysicsBody _handPhysicsBody;
 	private PhysicsJoint _joint;
 
-	public GrabbableProp( Player owner, ModelEntity grabbedEntity )
+	public GrabbableProp( Player owner, GameObject grabbedGo )
 	{
 		_owner = owner;
 
-		// We want to be able to shoot whatever entity the player is holding.
-		// Let's give it a tag that interacts with bullets and doesn't collide with players.
-		_isInteractable = grabbedEntity.Tags.Has( "interactable" );
+		_isInteractable = grabbedGo.Tags.Has( "interactable" );
 		if ( !_isInteractable )
-			grabbedEntity.Tags.Add( "interactable" );
+			grabbedGo.Tags.Add( "interactable" );
 
-		GrabbedEntity = grabbedEntity;
-		GrabbedEntity.EnableTouch = false;
-		GrabbedEntity.EnableHideInFirstPerson = false;
+		GrabbedGo = grabbedGo;
 
-		if ( GrabbedEntity.PhysicsBody.IsValid() )
+		var rb = GrabbedGo.Components.Get<Rigidbody>();
+		if ( rb?.PhysicsBody is not null )
 		{
 			_handPhysicsBody = new PhysicsBody( Game.PhysicsWorld )
 			{
 				BodyType = PhysicsBodyType.Keyframed
 			};
 
-			var attachment = owner.GetAttachment( Hands.MiddleHandsAttachment )!.Value;
-			_handPhysicsBody.Position = attachment.Position;
-			_handPhysicsBody.Rotation = attachment.Rotation;
+			var renderer = owner.Components.Get<SkinnedModelRenderer>();
+			var attachment = renderer?.GetAttachment( Hands.MiddleHandsAttachment );
+			if ( attachment.HasValue )
+			{
+				_handPhysicsBody.Position = attachment.Value.Position;
+				_handPhysicsBody.Rotation = attachment.Value.Rotation;
+			}
 
-			_joint = PhysicsJoint.CreateFixed( _handPhysicsBody, GrabbedEntity.PhysicsBody );
+			_joint = PhysicsJoint.CreateFixed( _handPhysicsBody, rb.PhysicsBody );
 		}
 	}
 
 	public void Update( Player player )
 	{
-		// Incase someone walks up and picks up the carriable from the player's hands
-		// we just need to reset "EnableHideInFirstPerson".
-		var carriableHasOwner = GrabbedEntity is Carriable && GrabbedEntity.Owner.IsValid();
-		if ( carriableHasOwner )
+		// If a carriable was picked up by someone else while held
+		var carriable = GrabbedGo?.Components.Get<Carriable>();
+		if ( carriable?.Owner is not null )
 		{
-			GrabbedEntity.EnableHideInFirstPerson = true;
-			GrabbedEntity = null;
+			GrabbedGo = null;
+			return;
 		}
 
-		if ( !GrabbedEntity.IsValid() || !_owner.IsValid() )
+		if ( !GrabbedGo.IsValid() || !_owner.IsValid() )
 		{
 			Drop();
 			return;
@@ -65,20 +65,24 @@ public class GrabbableProp : IGrabbable
 		if ( _handPhysicsBody is null )
 			return;
 
-		if ( Vector3.DistanceBetween( GrabbedEntity.Position, _owner.EyePosition ) > Player.UseDistance * 1.75f )
+		if ( Vector3.DistanceBetween( GrabbedGo.WorldPosition, _owner.EyePosition ) > Player.UseDistance * 1.75f )
 		{
 			Drop();
 			return;
 		}
 
-		var attachment = player.GetAttachment( Hands.MiddleHandsAttachment )!.Value;
-		_handPhysicsBody.Position = attachment.Position;
-		_handPhysicsBody.Rotation = attachment.Rotation;
+		var renderer = player.Components.Get<SkinnedModelRenderer>();
+		var attachment = renderer?.GetAttachment( Hands.MiddleHandsAttachment );
+		if ( attachment.HasValue )
+		{
+			_handPhysicsBody.Position = attachment.Value.Position;
+			_handPhysicsBody.Rotation = attachment.Value.Rotation;
+		}
 	}
 
-	public Entity Drop()
+	public GameObject Drop()
 	{
-		var grabbedEntity = GrabbedEntity;
+		var droppedGo = GrabbedGo;
 
 		if ( _joint.IsValid() )
 			_joint.Remove();
@@ -86,34 +90,36 @@ public class GrabbableProp : IGrabbable
 		_joint = null;
 		_handPhysicsBody = null;
 
-		if ( grabbedEntity.IsValid() )
+		if ( droppedGo.IsValid() )
 		{
 			if ( !_isInteractable )
 			{
-				grabbedEntity.Tags.Remove( "interactable" );
-				grabbedEntity.Components.GetOrCreate<IgnoreDamage>();
+				droppedGo.Tags.Remove( "interactable" );
+				droppedGo.Components.GetOrCreate<IgnoreDamage>();
 			}
 
-			grabbedEntity.LastAttacker = _owner;
-			grabbedEntity.EnableHideInFirstPerson = true;
-			grabbedEntity.EnableTouch = true;
-			grabbedEntity.SetParent( null );
+			droppedGo.Parent = null;
 
-			if ( grabbedEntity is Carriable carriable )
+			var carriable = droppedGo.Components.Get<Carriable>();
+			if ( carriable is not null )
 				carriable.OnCarryDrop( _owner );
 		}
 
-		GrabbedEntity = null;
-		return grabbedEntity;
+		GrabbedGo = null;
+		return droppedGo;
 	}
 
 	public void SecondaryAction()
 	{
 		_isThrowing = true;
 
-		var droppedEntity = Drop();
-		if ( droppedEntity.IsValid() )
-			droppedEntity.Velocity = _owner.GetDropVelocity();
+		var droppedGo = Drop();
+		if ( droppedGo.IsValid() )
+		{
+			var rb = droppedGo.Components.Get<Rigidbody>();
+			if ( rb?.PhysicsBody is not null )
+				rb.PhysicsBody.Velocity = _owner.EyeRotation.Forward * 500f + _owner.CharController.Velocity;
+		}
 
 		_owner.SetAnimParameter( "b_attack", true );
 		Utils.DelayAction( 0.6f, () => _isThrowing = false );

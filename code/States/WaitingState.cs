@@ -8,13 +8,13 @@ public class WaitingState : BaseState
 
 	public override void OnSecond()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( GameManager.Current.TimeUntilMapSwitch )
-			GameManager.Current.ForceStateChange( new MapSelectionState() );
+		if ( GameManager.Instance.TimeUntilMapSwitch )
+			GameManager.Instance.ForceStateChange( new MapSelectionState() );
 		else if ( Utils.GetPlayersWhere( p => !p.IsForcedSpectator ).Count >= GameManager.MinPlayers )
-			GameManager.Current.ForceStateChange( new PreRound() );
+			GameManager.Instance.ForceStateChange( new PreRound() );
 	}
 
 	public override void OnPlayerJoin( Player player )
@@ -33,16 +33,13 @@ public class WaitingState : BaseState
 
 	protected override void OnStart()
 	{
-		if ( GameManager.Current.TotalRoundsPlayed != 0 )
+		if ( GameManager.Instance.TotalRoundsPlayed != 0 )
 			MapHandler.Cleanup();
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		foreach ( var client in Game.Clients )
-		{
-			var player = client.Pawn as Player;
+		foreach ( var player in Utils.GetPlayersWhere( _ => true ) )
 			player.Respawn();
-		}
 	}
 }

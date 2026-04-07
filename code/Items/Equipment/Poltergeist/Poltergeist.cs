@@ -8,15 +8,15 @@ namespace TTT;
 [Title( "Poltergeist" )]
 public class Poltergeist : Weapon
 {
-	private TraceResult _trace;
+	private SceneTraceResult _trace;
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
-		base.Simulate( client );
+		base.Simulate( player );
 
-		_trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.MaxHintDistance )
-			.Ignore( this )
-			.Ignore( Owner )
+		_trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.MaxHintDistance )
+			.IgnoreGameObject( GameObject )
+			.IgnoreGameObject( Owner.GameObject )
 			.Run();
 	}
 
@@ -27,18 +27,21 @@ public class Poltergeist : Weapon
 
 		AmmoClip--;
 		Owner.SetAnimParameter( "b_attack", true );
-		PlaySound( Info.FireSound );
+		Sound.Play( Info.FireSound, Owner.EyePosition );
 		AttachEnt();
 	}
 
 	private void AttachEnt()
 	{
-		var ent = new PoltergeistEntity { Position = _trace.EndPosition };
-		ent.SetParent( _trace.Entity );
+		var go = new GameObject( true, "PoltergeistEntity" );
+		go.WorldPosition = _trace.EndPosition;
+		var pEntity = go.Components.Create<PoltergeistEntity>();
+		pEntity.AttachTo( _trace.GameObject );
+		go.NetworkSpawn();
 	}
 
 	private bool HasValidPlacement()
 	{
-		return _trace.Hit && _trace.Entity.PhysicsGroup is not null;
+		return _trace.Hit && _trace.Body is not null;
 	}
 }

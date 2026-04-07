@@ -6,8 +6,15 @@ namespace TTT;
 
 public partial class Player
 {
-	[Net]
-	public IList<int> Ammo { get; set; }
+	private readonly Dictionary<AmmoType, int> _ammo = new()
+	{
+		{ AmmoType.None, 0 },
+		{ AmmoType.PistolSMG, 0 },
+		{ AmmoType.Shotgun, 0 },
+		{ AmmoType.Sniper, 0 },
+		{ AmmoType.Magnum, 0 },
+		{ AmmoType.Rifle, 0 },
+	};
 
 	private static readonly Dictionary<AmmoType, int> _maxAmmoCapacity = new()
 	{
@@ -21,68 +28,50 @@ public partial class Player
 
 	public void ClearAmmo()
 	{
-		Ammo.Clear();
+		foreach ( var key in _ammo.Keys )
+			_ammo[key] = 0;
 	}
 
 	public int AmmoCount( AmmoType type )
 	{
-		var iType = (int)type;
-
-		if ( Ammo is null )
-			return 0;
-
-		if ( Ammo.Count <= iType )
-			return 0;
-
-		return Ammo[(int)type];
+		return _ammo.TryGetValue( type, out var count ) ? count : 0;
 	}
 
 	public bool SetAmmo( AmmoType type, int amount )
 	{
-		var iType = (int)type;
-
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return false;
 
-		if ( Ammo is null )
+		if ( !_ammo.ContainsKey( type ) )
 			return false;
 
-		while ( Ammo.Count <= iType )
-		{
-			Ammo.Add( 0 );
-		}
-
-		Ammo[(int)type] = amount;
-
+		_ammo[type] = amount;
 		return true;
 	}
 
 	public bool GiveAll( int amount )
 	{
-		if ( !Game.IsServer )
-			return false;
-
-		if ( Ammo is null )
+		if ( !Networking.IsHost )
 			return false;
 
 		foreach ( AmmoType ammoType in Enum.GetValues( typeof( AmmoType ) ) )
-		{
 			GiveAmmo( ammoType, amount );
-		}
 
 		return true;
 	}
 
 	public int GiveAmmo( AmmoType type, int amount )
 	{
-		if ( !Game.IsServer || Ammo is null )
+		if ( !Networking.IsHost )
 			return 0;
 
-		var ammoPickedUp = Math.Min( amount, _maxAmmoCapacity[type] - AmmoCount( type ) );
+		var maxCap = _maxAmmoCapacity.TryGetValue( type, out var max ) ? max : 0;
+		var ammoPickedUp = Math.Min( amount, maxCap - AmmoCount( type ) );
+
 		if ( ammoPickedUp > 0 )
 		{
 			SetAmmo( type, AmmoCount( type ) + ammoPickedUp );
-			PlaySound( "pickup_ammo" );
+			Sound.Play( "pickup_ammo", WorldPosition );
 		}
 
 		return ammoPickedUp;
@@ -90,9 +79,6 @@ public partial class Player
 
 	public int TakeAmmo( AmmoType type, int amount )
 	{
-		if ( Ammo is null )
-			return 0;
-
 		var available = AmmoCount( type );
 		amount = Math.Min( available, amount );
 

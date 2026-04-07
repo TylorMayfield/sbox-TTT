@@ -7,8 +7,7 @@ namespace TTT;
 
 public partial class MapSelectionState : BaseState
 {
-	[Net]
-	public IDictionary<IClient, string> Votes { get; private set; }
+	public Dictionary<Connection, string> Votes { get; private set; } = new();
 
 	public override string Name { get; } = "Map Selection";
 	public override int Duration => GameManager.MapSelectionTime;
@@ -19,12 +18,11 @@ public partial class MapSelectionState : BaseState
 	{
 		if ( Votes.Count == 0 )
 		{
-			Game.ChangeLevel( Game.Random.FromList( GameManager.Current.MapVoteIdents.ToList() ) ?? GameManager.DefaultMap );
+			Game.ChangeLevel( Game.Random.FromList( GameManager.Instance.MapVoteIdents.ToList() ) ?? GameManager.DefaultMap );
 			return;
 		}
 
-		Game.ChangeLevel
-		(
+		Game.ChangeLevel(
 			Votes.GroupBy( x => x.Value )
 			.OrderBy( x => x.Count() )
 			.Last().Key
@@ -34,29 +32,35 @@ public partial class MapSelectionState : BaseState
 	protected override void OnStart()
 	{
 		UI.FullScreenHintMenu.Instance?.ForceOpen( new UI.MapSelectionMenu() );
+
+		if ( Networking.IsHost )
+			_ = LoadMapIdents();
 	}
 
-	[ConCmd.Server]
+	[ConCmd( "ttt_map_vote" )]
 	public static void SetVote( string map )
 	{
-		if ( GameManager.Current.State is not MapSelectionState state )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( ConsoleSystem.Caller.Pawn is not Player player )
+		if ( GameManager.Instance.State is not MapSelectionState state )
 			return;
 
-		state.Votes[player.Client] = map;
+		var player = Utils.GetPlayersWhere( p => p.Network.Owner == Rpc.Caller ).FirstOrDefault();
+		if ( player is null )
+			return;
+
+		state.Votes[Rpc.Caller] = map;
 	}
 
-	[GameEvent.Entity.PostSpawn]
-	private static async void OnFinishedLoading()
+	private static async Task LoadMapIdents()
 	{
 		var maps = await GetLocalMapIdents();
 		if ( maps.IsNullOrEmpty() )
 			maps = await GetRemoteMapIdents();
 
 		maps.Shuffle();
-		GameManager.Current.MapVoteIdents = maps;
+		GameManager.Instance.MapVoteIdents = maps;
 	}
 
 	private static async Task<List<string>> GetLocalMapIdents()
@@ -84,7 +88,7 @@ public partial class MapSelectionState : BaseState
 
 	private static async Task<List<string>> GetRemoteMapIdents()
 	{
-		var queryResult = await Package.FindAsync( $"type:map game:{Game.Server.GameIdent.Replace( "#local", "" )}", take: 99 );
-		return queryResult.Packages.Select( ( p ) => p.FullIdent ).ToList();
+		var queryResult = await Package.FindAsync( $"type:map game:{Game.Server?.GameIdent?.Replace( "#local", "" )}", take: 99 );
+		return queryResult?.Packages.Select( p => p.FullIdent ).ToList() ?? new();
 	}
 }

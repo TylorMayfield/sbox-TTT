@@ -14,5 +14,5 @@ public abstract class CameraMode
 	/// <summary>
 	/// Update the camera position here since it happens every frame.
 	/// </summary>
-	public virtual void FrameSimulate( IClient client ) { }
+	public virtual void FrameSimulate() { }
 }

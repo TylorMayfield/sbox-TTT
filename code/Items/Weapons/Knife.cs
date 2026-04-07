@@ -5,14 +5,12 @@ namespace TTT;
 
 [Category( "Weapons" )]
 [ClassName( "ttt_weapon_knife" )]
-[HammerEntity]
 [Title( "Knife" )]
 public partial class Knife : Carriable
 {
-	[ConVar.Replicated( "ttt_knife_backstabs", Help = "When enabled the knife will only one shot from the back." )]
+	[ConVar( "ttt_knife_backstabs" )]
 	public static bool Backstabs { get; set; } = true;
 
-	[Net, Local, Predicted]
 	public TimeSince TimeSinceStab { get; private set; }
 
 	private const string SwingSound = "knife_swing-1";
@@ -24,25 +22,19 @@ public partial class Knife : Carriable
 	private Rotation _throwRotation = Rotation.From( new Angles( 90, 0, 0 ) );
 	private float _gravityModifier;
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( TimeSinceStab < 1f )
 			return;
 
 		if ( Input.Down( InputAction.PrimaryAttack ) )
 		{
-			using ( LagCompensation() )
-			{
-				TimeSinceStab = 0;
-				StabAttack( 35f, 8f );
-			}
+			TimeSinceStab = 0;
+			StabAttack( 35f, 8f );
 		}
 		else if ( Input.Released( InputAction.SecondaryAttack ) )
 		{
-			using ( LagCompensation() )
-			{
-				Throw();
-			}
+			Throw();
 		}
 	}
 
@@ -53,51 +45,56 @@ public partial class Knife : Carriable
 
 	private void StabAttack( float range, float radius )
 	{
-		Owner.SetAnimParameter( "b_attack", true );
-		SwingEffects();
-		PlaySound( SwingSound );
+		Owner.Renderer?.Set( "b_attack", true );
+		BroadcastSwingEffects();
+		Sound.Play( SwingSound, WorldPosition );
 
 		var endPosition = Owner.EyePosition + Owner.EyeRotation.Forward * range;
 
-		var trace = Trace.Ray( Owner.EyePosition, endPosition )
-			.Ignore( Owner )
-			.Radius( radius )
+		var trace = Scene.Trace.Ray( Owner.EyePosition, endPosition )
+			.IgnoreGameObject( Owner.GameObject )
+			.Size( radius )
+			.UseHitboxes()
 			.Run();
 
 		if ( !trace.Hit )
 			return;
 
-		trace.Surface.DoBulletImpact( trace );
+		trace.Surface?.DoBulletImpact( trace );
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		var damageInfo = DamageInfo.Generic( Backstabs ? 50 : 100 )
+		Player hitPlayer = null;
+		trace.GameObject?.Components.TryGet( out hitPlayer, FindMode.InAncestors );
+
+		var damageInfo = new DamageInfo()
+			.WithDamage( Backstabs ? 50 : 100 )
 			.UsingTraceResult( trace )
-			.WithAttacker( Owner )
+			.WithAttacker( Owner.GameObject )
 			.WithTags( DamageTags.Slash, DamageTags.Silent )
-			.WithWeapon( this );
+			.WithWeapon( GameObject );
 
-		if ( trace.Entity is Player player )
+		if ( hitPlayer is not null )
 		{
-			PlaySound( FleshHit );
+			Sound.Play( FleshHit, WorldPosition );
 
-			if ( Backstabs && IsBehindAndFacingTarget( player ) )
-				damageInfo.Damage *= 2;
-		}
+			if ( Backstabs && IsBehindAndFacingTarget( hitPlayer ) )
+				damageInfo = damageInfo.WithDamage( damageInfo.Damage * 2 );
 
-		trace.Entity.TakeDamage( damageInfo );
+			hitPlayer.TakeDamage( damageInfo );
 
-		if ( trace.Entity is Player target && !target.IsAlive )
-		{
-			Owner.Inventory.DropActive();
-			Delete();
+			if ( !hitPlayer.IsAlive )
+			{
+				Owner.Inventory.DropActive();
+				GameObject.Destroy();
+			}
 		}
 	}
 
 	private bool IsBehindAndFacingTarget( Player target )
 	{
-		var toOwner = new Vector2( Owner.WorldSpaceBounds.Center - target.WorldSpaceBounds.Center ).Normal;
+		var toOwner = new Vector2( Owner.WorldPosition - target.WorldPosition ).Normal;
 		var ownerForward = new Vector2( Owner.EyeRotation.Forward ).Normal;
 		var targetForward = new Vector2( target.EyeRotation.Forward ).Normal;
 
@@ -110,16 +107,12 @@ public partial class Knife : Carriable
 
 	private void Throw()
 	{
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition )
-			.Ignore( Owner )
-			.Run();
-
 		_thrower = Owner;
 		_isThrown = true;
-		_thrownFrom = Owner.Position;
+		_thrownFrom = Owner.WorldPosition;
 		_gravityModifier = 0;
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		if ( IsActive )
@@ -127,87 +120,101 @@ public partial class Knife : Carriable
 		else
 			Owner.Inventory.Drop( this );
 
-		EnableTouch = false;
-		PhysicsEnabled = false;
+		// Disable physics collider while thrown (manual movement)
+		var rb = Components.Get<Rigidbody>( FindMode.InSelf );
+		if ( rb is not null )
+			rb.Enabled = false;
 
-		Position = trace.EndPosition;
-		Rotation = PreviousOwner.EyeRotation * _throwRotation;
-		Velocity = PreviousOwner.EyeRotation.Forward * (600f + PreviousOwner.Velocity.Length);
+		WorldPosition = Owner.EyePosition;
+		WorldRotation = _thrower.EyeRotation * _throwRotation;
 	}
 
-	[ClientRpc]
-	protected void SwingEffects()
+	[Broadcast]
+	protected void BroadcastSwingEffects()
 	{
-		ViewModelEntity?.SetAnimParameter( "fire", true );
+		ViewModelRenderer?.Set( "fire", true );
 	}
 
-	[GameEvent.Tick.Server]
-	private void ServerTick()
+	[GameEvent.Tick]
+	private void ThrowTick()
 	{
-		if ( !_isThrown )
+		if ( !Networking.IsHost || !_isThrown )
 			return;
 
-		var oldPosition = Position;
-		var newPosition = Position;
-		newPosition += Velocity * Time.Delta;
+		var oldPosition = WorldPosition;
+		var newPosition = WorldPosition;
+		newPosition += (WorldRotation.Forward * 600f) * Time.Delta;
 
 		_gravityModifier += 8;
 		newPosition -= new Vector3( 0f, 0f, _gravityModifier * Time.Delta );
 
-		var trace = Trace.Ray( Position, newPosition )
-			.Radius( 0f )
+		var trace = Scene.Trace.Ray( WorldPosition, newPosition )
 			.UseHitboxes()
 			.WithAnyTags( "solid" )
-			.Ignore( _thrower )
-			.Ignore( this )
+			.IgnoreGameObject( _thrower.IsValid() ? _thrower.GameObject : null )
+			.IgnoreGameObject( GameObject )
 			.Run();
 
-		Position = trace.EndPosition;
-		Rotation = Rotation.From( trace.Direction.EulerAngles ) * _throwRotation;
+		WorldPosition = trace.EndPosition;
+		WorldRotation = Rotation.From( trace.Direction.EulerAngles ) * _throwRotation;
 
 		if ( !trace.Hit )
 			return;
 
-		switch ( trace.Entity )
+		Player hitPlayer = null;
+		trace.GameObject?.Components.TryGet( out hitPlayer, FindMode.InAncestors );
+
+		if ( hitPlayer is not null )
 		{
-			case Player player:
+			trace.Surface?.DoBulletImpact( trace );
+
+			var damageInfo = new DamageInfo()
+				.WithDamage( 100f )
+				.UsingTraceResult( trace )
+				.WithAttacker( _thrower?.IsValid() == true ? _thrower.GameObject : null )
+				.WithTags( DamageTags.Slash, DamageTags.Silent )
+				.WithWeapon( GameObject );
+
+			hitPlayer.TakeDamage( damageInfo );
+
+			GameObject.Destroy();
+		}
+		else if ( trace.Body?.IsStatic == true )
+		{
+			// Check angle to see if knife sticks or bounces
+			if ( Vector3.GetAngle( trace.Normal, trace.Direction ) < 120 )
 			{
-				trace.Surface.DoBulletImpact( trace );
-
-				var damageInfo = DamageInfo.Generic( 100f )
-					.UsingTraceResult( trace )
-					.WithAttacker( _thrower )
-					.WithTags( DamageTags.Slash, DamageTags.Silent )
-					.WithWeapon( this );
-
-				player.TakeDamage( damageInfo );
-
-				Delete();
-
-				break;
+				// Bounce
+				WorldPosition = oldPosition - trace.Direction * 5;
+				var rb = Components.Get<Rigidbody>( FindMode.InSelf );
+				if ( rb is not null )
+				{
+					rb.Enabled = true;
+					var mass = rb.PhysicsBody?.Mass ?? 1f;
+					rb.Velocity = trace.Direction * 500f * mass;
+				}
+				_isThrown = false;
 			}
-			case WorldEntity:
+			else
 			{
-				if ( Vector3.GetAngle( trace.Normal, trace.Direction ) < 120 )
-					goto default;
-
-				trace.Surface.DoBulletImpact( trace );
-
-				Position -= trace.Direction * 4f; // Make the knife stuck in the terrain.			
-
-				break;
-			}
-			default:
-			{
-				Position = oldPosition - trace.Direction * 5;
-				Velocity = trace.Direction * 500f * PhysicsBody.Mass;
-				PhysicsEnabled = true;
-
-				break;
+				// Stick in wall
+				trace.Surface?.DoBulletImpact( trace );
+				WorldPosition -= trace.Direction * 4f;
+				_isThrown = false;
 			}
 		}
-
-		EnableTouch = true;
-		_isThrown = false;
+		else
+		{
+			// Hit something else — bounce
+			WorldPosition = oldPosition - trace.Direction * 5;
+			var rb = Components.Get<Rigidbody>( FindMode.InSelf );
+			if ( rb is not null )
+			{
+				rb.Enabled = true;
+				var mass = rb.PhysicsBody?.Mass ?? 1f;
+				rb.Velocity = trace.Direction * 500f * mass;
+			}
+			_isThrown = false;
+		}
 	}
 }

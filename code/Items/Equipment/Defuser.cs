@@ -7,21 +7,21 @@ namespace TTT;
 [Title( "Defuser" )]
 public class Defuser : Carriable
 {
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( !Input.Pressed( InputAction.PrimaryAttack ) )
 			return;
 
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
-			.Ignore( this )
-			.Ignore( Owner )
-			.DynamicOnly()
+		var trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
+			.IgnoreGameObject( GameObject )
+			.IgnoreGameObject( Owner.GameObject )
 			.Run();
 
-		if ( trace.Entity is not C4Entity c4 )
+		if ( !trace.Hit )
 			return;
 
-		if ( c4.IsArmed )
+		var c4 = trace.GameObject?.Components.Get<C4Entity>( FindMode.InSelf );
+		if ( c4 is not null && c4.IsArmed )
 			c4.Defuse();
 	}
 }

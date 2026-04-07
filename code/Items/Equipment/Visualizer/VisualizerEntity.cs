@@ -2,33 +2,29 @@ using Sandbox;
 
 namespace TTT;
 
-[ClassName( "ttt_entity_visualizer" )]
-[EditorModel( "models/visualizer/visualizer.vmdl" )]
-[Title( "Visualizer" )]
-public partial class VisualizerEntity : Prop, IEntityHint, IUse
+public sealed partial class VisualizerEntity : Component, ICarriableHint
 {
-	private static readonly Model _worldModel = Model.Load( "models/visualizer/visualizer.vmdl" );
+	public Player Planter { get; private set; }
 
-	public override void Spawn()
+	public void Initialize( Player planter )
 	{
-		base.Spawn();
-
-		Model = _worldModel;
-		SetupPhysicsFromModel( PhysicsMotionType.Dynamic );
-		Health = 100f;
+		Planter = planter;
 	}
 
-	bool IUse.OnUse( Entity user )
+	bool ICarriableHint.CanHint( Player player )
 	{
-		var player = user as Player;
+		return player.IsAlive && (Planter is null || player == Planter);
+	}
+
+	void ICarriableHint.Tick( Player player )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		if ( !Input.Down( InputAction.Use ) )
+			return;
+
 		player.Inventory.Add( new Visualizer() );
-		Delete();
-
-		return false;
-	}
-
-	bool IUse.IsUsable( Entity user )
-	{
-		return user is Player player && player.IsAlive && (Owner is null || user == Owner);
+		GameObject.Destroy();
 	}
 }

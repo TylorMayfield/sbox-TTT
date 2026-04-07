@@ -8,7 +8,6 @@ namespace TTT;
 [Title( "Binoculars" )]
 public partial class Binoculars : Carriable
 {
-	[Net, Local, Predicted]
 	private int ZoomLevel { get; set; }
 
 	public bool IsZoomed => ZoomLevel > 0;
@@ -19,7 +18,7 @@ public partial class Binoculars : Carriable
 	{
 		base.ActiveStart( player );
 
-		_defaultFOV = Camera.FieldOfView;
+		_defaultFOV = Game.ActiveScene?.Camera?.FieldOfView ?? 90f;
 	}
 
 	public override void ActiveEnd( Player player, bool dropped )
@@ -30,14 +29,13 @@ public partial class Binoculars : Carriable
 		ZoomLevel = 0;
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( Input.Pressed( InputAction.SecondaryAttack ) )
 			ChangeZoomLevel();
 
 		if ( Input.Pressed( InputAction.Reload ) )
 		{
-			// Reset zoom.
 			ZoomLevel = 4;
 			ChangeZoomLevel();
 		}
@@ -45,15 +43,15 @@ public partial class Binoculars : Carriable
 		if ( !IsZoomed )
 			return;
 
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.MaxHintDistance )
-			.Ignore( this )
-			.Ignore( Owner )
+		var trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.MaxHintDistance )
+			.IgnoreGameObject( GameObject )
+			.IgnoreGameObject( Owner.GameObject )
 			.WithTag( "interactable" )
 			.Run();
 
-		_corpse = trace.Entity as Corpse;
+		_corpse = trace.GameObject?.Components.Get<Corpse>( FindMode.InSelf );
 
-		if ( !Game.IsServer || !_corpse.IsValid() )
+		if ( !Networking.IsHost || !_corpse.IsValid() )
 			return;
 
 		if ( Input.Pressed( InputAction.PrimaryAttack ) )
@@ -65,14 +63,15 @@ public partial class Binoculars : Carriable
 		base.BuildInput();
 
 		if ( IsZoomed )
-			Owner.ViewAngles = Angles.Lerp( Owner.OriginalViewAngles, Owner.ViewAngles, 0.5f / MathF.Pow( 2.5f, ZoomLevel ) );
+			Owner.ViewAngles = Angles.Lerp( Owner.ViewAngles, Owner.ViewAngles, 0.5f / MathF.Pow( 2.5f, ZoomLevel ) );
 	}
 
 	protected override void DestroyHudElements()
 	{
 		base.DestroyHudElements();
 
-		Camera.FieldOfView = _defaultFOV;
+		if ( Game.ActiveScene?.Camera is { } cam )
+			cam.FieldOfView = _defaultFOV;
 	}
 
 	private void ChangeZoomLevel()
@@ -81,15 +80,19 @@ public partial class Binoculars : Carriable
 		{
 			_corpse = null;
 			ZoomLevel = 0;
-			Camera.FieldOfView = _defaultFOV;
+
+			if ( Game.ActiveScene?.Camera is { } cam )
+				cam.FieldOfView = _defaultFOV;
 
 			return;
 		}
 
-		if ( Game.IsClient )
-			PlaySound( "scope_in" );
+		if ( !Networking.IsHost )
+			Sound.Play( "scope_in", WorldPosition );
 
 		ZoomLevel++;
-		Camera.FieldOfView = 40f / MathF.Pow( 2.5f, ZoomLevel );
+
+		if ( Game.ActiveScene?.Camera is { } c )
+			c.FieldOfView = 40f / MathF.Pow( 2.5f, ZoomLevel );
 	}
 }

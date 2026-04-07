@@ -1,9 +1,12 @@
-using Sandbox;
 using Sandbox.UI;
 
 namespace TTT;
 
-public interface IEntityHint
+/// <summary>
+/// Interface for components that can display a hint when looked at.
+/// Replaces the old IEntityHint and IUse interfaces.
+/// </summary>
+public interface ICarriableHint
 {
 	/// <summary>
 	/// The max viewable distance of the hint.
@@ -21,15 +24,15 @@ public interface IEntityHint
 	bool CanHint( Player player ) => true;
 
 	/// <summary>
-	/// The hint we should display.
+	/// The hint panel to display.
 	/// </summary>
 	Panel DisplayHint( Player player )
 	{
-		return new UI.Hint() { HintText = DisplayInfo.For( (Entity)this ).Name };
+		return new UI.Hint() { HintText = "Use" };
 	}
 
 	/// <summary>
-	/// Occurs on each tick if the hint is active.
+	/// Called each tick while the hint is active.
 	/// </summary>
 	void Tick( Player player ) { }
 }

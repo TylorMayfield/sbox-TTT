@@ -6,7 +6,7 @@ namespace TTT;
 public partial class Player
 {
 	public static List<List<Clothing>> ClothingPresets { get; private set; } = new();
-	public ClothingContainer ClothingContainer { get; private init; } = new();
+
 	/// <summary>
 	/// The current preset from <see cref="ClothingPresets"/>.
 	/// </summary>
@@ -14,16 +14,15 @@ public partial class Player
 
 	public void DressPlayer()
 	{
-		ClothingContainer.Clothing = _currentPreset;
+		if ( _currentPreset is not null )
+			ClothingContainer.Clothing = _currentPreset;
 
-		ClothingContainer.DressEntity( this );
+		ClothingContainer.DressEntity( Renderer );
 	}
 
-	[GameEvent.Entity.PostSpawn]
-	[GameEvent.Entity.PostCleanup]
-	private static void ChangeClothingPreset()
+	public static void ChangeClothingPreset()
 	{
-		if ( Game.IsServer )
+		if ( Networking.IsHost )
 			_currentPreset = Game.Random.FromList( ClothingPresets );
 	}
 }

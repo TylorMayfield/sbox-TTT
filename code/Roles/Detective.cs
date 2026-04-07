@@ -13,7 +13,7 @@ public class Detective : Role
 	{
 		base.OnSelect( player );
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		player.IsRoleKnown = true;

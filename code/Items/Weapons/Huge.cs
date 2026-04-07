@@ -1,5 +1,4 @@
 using Editor;
-using Sandbox;
 using System;
 
 namespace TTT;
@@ -7,25 +6,24 @@ namespace TTT;
 [Category( "Weapons" )]
 [ClassName( "ttt_weapon_huge" )]
 [EditorModel( "models/weapons/w_mg4.vmdl" )]
-[HammerEntity]
 [Title( "H.U.G.E" )]
 public class Huge : Weapon
 {
 	private const string BulletsBodyGroup = "bullets";
 	private const int MaxBulletsChoice = 7;
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
-		base.Simulate( client );
+		base.Simulate( player );
 
-		// As we decrease ammo count, update the viewmodels "bullets" bodygroup.
-		ViewModelEntity?.SetBodyGroup( BulletsBodyGroup, Math.Min( AmmoClip, MaxBulletsChoice ) );
+		// As ammo decreases, update the viewmodel "bullets" body group.
+		ViewModelRenderer?.SetBodyGroup( BulletsBodyGroup, Math.Min( AmmoClip, MaxBulletsChoice ) );
 	}
 
 	public override void CreateViewModel()
 	{
 		base.CreateViewModel();
 
-		ViewModelEntity.SetBodyGroup( BulletsBodyGroup, Math.Min( AmmoClip, MaxBulletsChoice ) );
+		ViewModelRenderer?.SetBodyGroup( BulletsBodyGroup, Math.Min( AmmoClip, MaxBulletsChoice ) );
 	}
 }

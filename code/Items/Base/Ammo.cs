@@ -6,7 +6,7 @@ namespace TTT;
 public enum AmmoType : byte
 {
 	/// <summary>
-	/// Used for weapons that cannot pickup any additional ammo.
+	/// Used for weapons that cannot pick up any additional ammo.
 	/// </summary>
 	None,
 	PistolSMG,
@@ -16,10 +16,9 @@ public enum AmmoType : byte
 	Rifle
 }
 
-public abstract partial class Ammo : Prop, IEntityHint, IUse
+public abstract partial class Ammo : Component, Component.ITriggerListener, ICarriableHint
 {
-	[Net]
-	private int CurrentCount { get; set; }
+	[Sync] private int CurrentCount { get; set; }
 
 	protected virtual AmmoType Type => AmmoType.None;
 	protected virtual int DefaultAmmoCount => 30;
@@ -28,42 +27,47 @@ public abstract partial class Ammo : Prop, IEntityHint, IUse
 	private Player _dropper;
 	private TimeSince _timeSinceDropped = 0;
 
-	public override void Spawn()
+	protected override void OnStart()
 	{
+		if ( !Networking.IsHost )
+			return;
+
 		Tags.Add( "interactable" );
-
-		SetModel( WorldModelPath );
-		SetupPhysicsFromModel( PhysicsMotionType.Dynamic );
-
-		PhysicsEnabled = true;
-		UsePhysicsCollision = true;
-		EnableHideInFirstPerson = true;
-		EnableShadowInFirstPerson = true;
-
 		CurrentCount = DefaultAmmoCount;
+
+		// Set up the model renderer
+		var renderer = Components.Get<ModelRenderer>( FindMode.InSelf );
+		if ( renderer is not null && !WorldModelPath.IsNullOrEmpty() )
+			renderer.Model = Model.Load( WorldModelPath );
 	}
 
-	public override void StartTouch( Entity other )
+	void ITriggerListener.OnTriggerEnter( Collider other )
 	{
-		base.StartTouch( other );
+		if ( !Networking.IsHost )
+			return;
 
-		if ( other is Player player && (player != _dropper || _timeSinceDropped >= 1f) )
-			GiveAmmo( player );
-	}
-
-	public static Ammo Create( AmmoType ammoType, int count = 0 )
-	{
-		Game.AssertServer();
-
-		var ammo = ammoType switch
+		if ( other.Components.TryGet<Player>( out var player, FindMode.InAncestors )
+			&& (player != _dropper || _timeSinceDropped >= 1f) )
 		{
-			AmmoType.None => null,
-			AmmoType.PistolSMG => new SMGAmmo(),
-			AmmoType.Shotgun => new ShotgunAmmo(),
-			AmmoType.Sniper => new SniperAmmo(),
-			AmmoType.Magnum => new MagnumAmmo(),
-			AmmoType.Rifle => new RifleAmmo(),
-			_ => default( Ammo ),
+			GiveAmmo( player );
+		}
+	}
+
+	void ITriggerListener.OnTriggerExit( Collider other ) { }
+
+	public static Ammo CreateOnObject( GameObject parent, AmmoType ammoType, int count = 0 )
+	{
+		if ( !Networking.IsHost )
+			return null;
+
+		Ammo ammo = ammoType switch
+		{
+			AmmoType.PistolSMG => parent.Components.Create<SMGAmmo>(),
+			AmmoType.Shotgun => parent.Components.Create<ShotgunAmmo>(),
+			AmmoType.Sniper => parent.Components.Create<SniperAmmo>(),
+			AmmoType.Magnum => parent.Components.Create<MagnumAmmo>(),
+			AmmoType.Rifle => parent.Components.Create<RifleAmmo>(),
+			_ => null
 		};
 
 		if ( ammo is null )
@@ -74,41 +78,55 @@ public abstract partial class Ammo : Prop, IEntityHint, IUse
 		return ammo;
 	}
 
-	public static Ammo Drop( Player dropper, AmmoType ammoType, int count )
+	public static GameObject Drop( Player dropper, AmmoType ammoType, int count )
 	{
-		var ammoCrate = Create( ammoType, count );
-		ammoCrate.Position = dropper.WorldSpaceBounds.Center;
-		ammoCrate.Rotation = dropper.EyeRotation;
-		ammoCrate.PhysicsGroup.Velocity = dropper.GetDropVelocity();
-		ammoCrate._dropper = dropper;
-		ammoCrate._timeSinceDropped = 0;
+		if ( !Networking.IsHost )
+			return null;
 
-		return ammoCrate;
+		var go = new GameObject( true, $"Ammo ({ammoType})" );
+		go.WorldPosition = dropper.WorldPosition + Vector3.Up * 40f;
+
+		go.Components.Create<ModelRenderer>();
+		var rb = go.Components.Create<Rigidbody>();
+
+		var ammo = CreateOnObject( go, ammoType, count );
+		if ( ammo is null )
+		{
+			go.Destroy();
+			return null;
+		}
+
+		if ( rb is not null )
+			rb.Velocity = dropper.GetDropVelocity();
+
+		ammo._dropper = dropper;
+		ammo._timeSinceDropped = 0;
+
+		go.NetworkSpawn();
+
+		return go;
 	}
 
 	private void GiveAmmo( Player player )
 	{
-		if ( !this.IsValid() || !player.Inventory.HasWeaponOfAmmoType( Type ) )
+		if ( !IsValid || !player.Inventory.HasWeaponOfAmmoType( Type ) )
 			return;
 
 		var ammoPickedUp = player.GiveAmmo( Type, CurrentCount );
 		CurrentCount -= ammoPickedUp;
 
 		if ( CurrentCount <= 0 )
-			Delete();
+			GameObject.Destroy();
 	}
 
-	Panel IEntityHint.DisplayHint( Player player ) => new UI.Hint() { HintText = $"{DisplayInfo.For( this ).Name} x{CurrentCount}" };
+	Panel ICarriableHint.DisplayHint( Player player ) => new UI.Hint() { HintText = $"{DisplayInfo.For( this ).Name} x{CurrentCount}" };
 
-	bool IUse.OnUse( Entity user )
+	void ICarriableHint.Tick( Player player )
 	{
-		GiveAmmo( user as Player );
+		if ( !Input.Pressed( InputAction.Use ) )
+			return;
 
-		return false;
-	}
-
-	bool IUse.IsUsable( Entity user )
-	{
-		return user is Player player && player.IsAlive;
+		if ( player.IsAlive )
+			GiveAmmo( player );
 	}
 }

@@ -1,139 +1,106 @@
 using Sandbox;
-using Sandbox.Diagnostics;
-using Sandbox.Physics;
-using Sandbox.UI;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace TTT;
 
-[ClassName( "ttt_entity_corpse" )]
-[HideInEditor]
-[Title( "Player corpse" )]
-public partial class Corpse : ModelEntity, IEntityHint, IUse
+[Title( "Player Corpse" )]
+public sealed partial class Corpse : Component, ICarriableHint
 {
-	[Net] public bool HasCredits { get; private set; }
-	public Player Player { get; set; }
+	[Sync] public bool HasCredits { get; private set; }
+	[Sync] public Player Player { get; set; }
+
 	/// <summary>
 	/// Whether or not this corpse has been found by a player
 	/// or revealed at the end of a round.
 	/// </summary>
 	public bool IsFound { get; set; }
+
 	/// <summary>
-	/// The player who identified this corpse (this does not include covert searches).
+	/// The player who identified this corpse (does not include covert searches).
 	/// </summary>
 	public Player Finder { get; private set; }
+
 	public TimeUntil TimeUntilDNADecay { get; private set; }
 	public string C4Note { get; private set; }
 	public string LastWords { get; private set; }
 	public PerkInfo[] Perks { get; private set; }
 	public Player[] KillList { get; private set; }
 	public bool HasCalledDetective { get; set; } = false;
-	public List<Particles> Ropes { get; private set; } = new();
+	public List<SceneParticles> Ropes { get; private set; } = new();
 	public List<PhysicsJoint> RopeJoints { get; private set; } = new();
 
-	// We use this HashSet of NetworkIds to avoid sending kill information
-	// to players multiple times.
-	private readonly HashSet<int> _playersWithKillInfo = new();
+	// Track SteamIds to avoid sending kill information multiple times.
+	private readonly HashSet<ulong> _playersWithKillInfo = new();
 
-	public Corpse() { }
-
-	public Corpse( Player player )
+	public static Corpse Create( Player player )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return null;
 
-		#region Copy Player
-		Player = player;
-		HasCredits = player.Credits > 0;
-		Owner = player;
-		Transform = player.Transform;
-		Model = player.Model;
+		var go = new GameObject( true, $"Corpse ({player.SteamName})" );
+		go.Tags.Add( "interactable", "corpse" );
+		go.WorldPosition = player.WorldPosition;
+		go.WorldRotation = player.WorldRotation;
 
-		this.CopyBonesFrom( player );
-		this.SetRagdollVelocityFrom( player );
-		ApplyForceToBone( Player.LastDamage.Force, Player.LastDamage.BoneIndex );
-		CopyBodyGroups( player );
-		#endregion
-
-		#region Copy Clothes
-		foreach ( var child in Player.Children )
+		// Copy model renderer from player and set up as ragdoll
+		var playerRenderer = player.Components.Get<SkinnedModelRenderer>();
+		var renderer = go.Components.Create<SkinnedModelRenderer>();
+		if ( playerRenderer is not null )
 		{
-			if ( !child.Tags.Has( "clothes" ) )
-				continue;
-
-			if ( child is not ModelEntity modelEntity )
-				continue;
-
-			var clothing = new ModelEntity
-			{
-				Model = modelEntity.Model,
-				Position = modelEntity.Position,
-				RenderColor = modelEntity.RenderColor
-			};
-
-			clothing.TakeDecalsFrom( modelEntity );
-			clothing.CopyBodyGroups( modelEntity );
-			clothing.CopyMaterialGroup( modelEntity );
-
-			if ( Player.LastDamage.IsHeadshot() && clothing.Model?.ResourcePath == Detective.Hat.Model )
-			{
-				clothing.Tags.Add( "interactable" );
-				clothing.SetupPhysicsFromModel( PhysicsMotionType.Dynamic );
-				clothing.PhysicsGroup.AddVelocity( Player.LastDamage.Force * 2 );
-			}
-			else
-				clothing.SetParent( this, true );
+			renderer.Model = playerRenderer.Model;
+			renderer.UseAnimGraph = false;
 		}
-		#endregion
 
-		if ( Player.LastDamage.HasTag( DamageTags.Bullet ) && Player.LastAttacker is Player killer )
+		// Set up ragdoll physics
+		var physics = go.Components.Create<ModelPhysics>();
+		physics.Model = renderer.Model;
+		physics.Renderer = renderer;
+
+		var corpse = go.Components.Create<Corpse>();
+		corpse.Player = player;
+		corpse.HasCredits = player.Credits > 0;
+
+		// Apply death force to ragdoll
+		if ( player.LastDamage.Force.Length > 0 )
+			physics.PhysicsGroup?.AddVelocity( player.LastDamage.Force );
+
+		// Attach DNA if killed by bullet
+		if ( player.LastDamage.HasTag( DamageTags.Bullet )
+			&& player.LastAttacker?.Components.TryGet<Player>( out var killer ) == true )
 		{
-			var dna = new DNA( killer );
-			Components.Add( dna );
-			TimeUntilDNADecay = dna.TimeUntilDecayed;
+			var dna = go.Components.Create<DNA>();
+			dna.Init( killer );
+			corpse.TimeUntilDNADecay = dna.TimeUntilDecayed;
 		}
 
 		var c4Note = player.Components.Get<C4Note>();
 		if ( c4Note is not null )
-			C4Note = c4Note.SafeWireNumber.ToString();
+			corpse.C4Note = c4Note.SafeWireNumber.ToString();
 
-		Perks = new PerkInfo[Player.Perks.Count];
-		for ( var i = 0; i < Player.Perks.Count; i++ )
-			Perks[i] = Player.Perks[i].Info;
+		corpse.Perks = new PerkInfo[player.Perks.Count];
+		for ( var i = 0; i < player.Perks.Count; i++ )
+			corpse.Perks[i] = player.Perks[i].Info;
 
-		LastWords = player.LastWords;
-		KillList = Player.PlayersKilled.ToArray();
+		corpse.LastWords = player.LastWords;
+		corpse.KillList = player.PlayersKilled.ToArray();
+		corpse._playersWithKillInfo.Add( player.SteamId );
 
-		_playersWithKillInfo.Add( player.NetworkIdent );
-	}
+		go.NetworkSpawn();
 
-	public override void Spawn()
-	{
-		base.Spawn();
-
-		Tags.Add( "interactable", "corpse" );
-
-		PhysicsEnabled = true;
-		UsePhysicsCollision = true;
-	}
-
-	public override void ClientSpawn()
-	{
-		base.ClientSpawn();
-
-		TakeDecalsFrom( Owner as ModelEntity );
+		return corpse;
 	}
 
 	/// <summary>
 	/// Search this corpse.
 	/// </summary>
-	/// <param name="searcher">The player who is searching this corpse.</param>
+	/// <param name="searcher">The player searching.</param>
 	/// <param name="covert">Whether or not this is a covert search.</param>
 	/// <param name="retrieveCredits">Should the searcher retrieve credits.</param>
 	public void Search( Player searcher, bool covert = false, bool retrieveCredits = true )
 	{
-		Game.AssertServer();
-		Assert.NotNull( searcher );
+		if ( !Networking.IsHost )
+			return;
 
 		var creditsRetrieved = 0;
 		retrieveCredits &= searcher.Role.CanUseShop & searcher.IsAlive;
@@ -146,24 +113,23 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 			HasCredits = false;
 		}
 
-		SendPlayer( To.Single( searcher ) );
-		Player.SendRole( To.Single( searcher ) );
-		SendKillInfo( To.Single( searcher ) );
+		BroadcastSendPlayer( searcher.Network.Owner, Player );
+		Player.SendRole( searcher.Network.Owner );
+		SendKillInfo( searcher );
 
-		// Dead players will always covert search.
+		// Dead players always covert search.
 		covert |= !searcher.IsAlive;
 
 		if ( !covert )
 		{
 			if ( !IsFound )
 			{
-				SendPlayer( To.Everyone );
+				BroadcastSendPlayerToAll( Player );
 				Player.IsRoleKnown = true;
 			}
 
-			// If the searcher is a detective, send kill info to everyone.
 			if ( searcher.Role is Detective )
-				SendKillInfo( To.Everyone );
+				SendKillInfoToAll();
 
 			if ( !Player.IsConfirmedDead )
 				Player.ConfirmDeath( searcher );
@@ -188,40 +154,42 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 				IsFound = true;
 				Finder = searcher;
 				Event.Run( TTTEvent.Player.CorpseFound, Player );
-				ClientCorpseFound( searcher );
+				BroadcastCorpseFound( searcher );
 			}
 		}
 
-		ClientSearch( To.Single( searcher ), creditsRetrieved );
+		BroadcastSearch( searcher.Network.Owner, creditsRetrieved );
 	}
 
-	public void SendPlayer( To to )
+	public void SendKillInfo( Player searcher )
 	{
-		SendPlayer( to, Player );
+		if ( !Networking.IsHost )
+			return;
+
+		var connection = searcher.Network.Owner;
+		if ( _playersWithKillInfo.Contains( connection.SteamId ) )
+			return;
+
+		_playersWithKillInfo.Add( connection.SteamId );
+
+		Player.SendDamageInfo( connection );
+		BroadcastSendMiscInfo( connection, KillList, Perks, C4Note, LastWords, TimeUntilDNADecay );
+
+		if ( searcher.Role is Detective )
+			BroadcastSendDetectiveInfo( connection, Player.LastSeenPlayer );
 	}
 
-	public void SendKillInfo( To to )
+	public void SendKillInfoToAll()
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
-		foreach ( var client in to )
-		{
-			if ( _playersWithKillInfo.Contains( client.Pawn.NetworkIdent ) )
-				continue;
-
-			_playersWithKillInfo.Add( client.Pawn.NetworkIdent );
-
-			Player.SendDamageInfo( To.Single( client ) );
-
-			SendMiscInfo( To.Single( client ), KillList, Perks, C4Note, LastWords, TimeUntilDNADecay );
-
-			if ( client.Pawn is Player player && player.Role is Detective )
-				SendDetectiveInfo( To.Single( client ), Player.LastSeenPlayer );
-		}
+		foreach ( var player in Utils.GetPlayersWhere( _ => true ) )
+			SendKillInfo( player );
 	}
 
-	[ClientRpc]
-	public void ClientCorpseFound( Player finder, bool wasPreviouslyFound = false )
+	[Broadcast]
+	public void BroadcastCorpseFound( Player finder, bool wasPreviouslyFound = false )
 	{
 		IsFound = true;
 		Finder = finder;
@@ -230,9 +198,12 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 			Event.Run( TTTEvent.Player.CorpseFound, Player );
 	}
 
-	[ClientRpc]
-	private void ClientSearch( int creditsRetrieved = 0 )
+	[Broadcast]
+	private void BroadcastSearch( Connection to, int creditsRetrieved = 0 )
 	{
+		if ( Connection.Local != to )
+			return;
+
 		Player.Status = Player.IsConfirmedDead ? PlayerStatus.ConfirmedDead : PlayerStatus.MissingInAction;
 
 		foreach ( var deadPlayer in Player.PlayersKilled )
@@ -241,16 +212,15 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 		if ( creditsRetrieved <= 0 )
 			return;
 
-		UI.InfoFeed.AddEntry
-		(
-			Game.LocalPawn as Player,
-			$"found {creditsRetrieved} credits!"
-		);
+		UI.InfoFeed.AddEntry( Player.Local, $"found {creditsRetrieved} credits!" );
 	}
 
-	[ClientRpc]
-	private void SendMiscInfo( Player[] killList, PerkInfo[] perks, string c4Note, string lastWords, TimeUntil dnaDecay )
+	[Broadcast]
+	private void BroadcastSendMiscInfo( Connection to, Player[] killList, PerkInfo[] perks, string c4Note, string lastWords, TimeUntil dnaDecay )
 	{
+		if ( Connection.Local != to )
+			return;
+
 		if ( killList is not null )
 			Player.PlayersKilled = killList.ToList();
 
@@ -260,29 +230,39 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 		TimeUntilDNADecay = dnaDecay;
 	}
 
-	[ClientRpc]
-	private void SendPlayer( Player player )
+	[Broadcast]
+	private void BroadcastSendPlayer( Connection to, Player player )
+	{
+		if ( Connection.Local != to )
+			return;
+
+		Player = player;
+		Player.Corpse = this;
+	}
+
+	[Broadcast]
+	private void BroadcastSendPlayerToAll( Player player )
 	{
 		Player = player;
 		Player.Corpse = this;
 	}
 
-	/// <summary>
-	/// Detectives get additional information about a corpse.
-	/// </summary>
-	[ClientRpc]
-	private void SendDetectiveInfo( Player player )
+	[Broadcast]
+	private void BroadcastSendDetectiveInfo( Connection to, Player player )
 	{
+		if ( Connection.Local != to )
+			return;
+
 		Player.LastSeenPlayer = player;
 	}
 
 	public void RemoveRopeAttachments()
 	{
 		foreach ( var rope in Ropes )
-			rope.Destroy( true );
+			rope.Delete();
 
-		foreach ( var spring in RopeJoints )
-			spring.Remove();
+		foreach ( var joint in RopeJoints )
+			joint.Remove();
 
 		Ropes.Clear();
 		RopeJoints.Clear();
@@ -291,40 +271,25 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 	protected override void OnDestroy()
 	{
 		RemoveRopeAttachments();
-
-		base.OnDestroy();
 	}
 
-	private void ApplyForceToBone( Vector3 force, int forceBone )
+	float ICarriableHint.HintDistance => Player.MaxHintDistance;
+
+	bool ICarriableHint.CanHint( Player player ) => GameManager.Instance?.State is InProgress or PostRound;
+
+	Panel ICarriableHint.DisplayHint( Player player ) => new UI.CorpseHint( this );
+
+	void ICarriableHint.Tick( Player player )
 	{
-		PhysicsGroup.AddVelocity( force );
+		var searchButton = GetSearchButton();
 
-		if ( forceBone < 0 )
-			return;
-
-		var corpse = GetBonePhysicsBody( forceBone );
-
-		if ( corpse is not null )
-			corpse.ApplyForce( force * 1000 );
-		else
-			PhysicsGroup.AddVelocity( force );
-	}
-
-	float IEntityHint.HintDistance => Player.MaxHintDistance;
-
-	bool IEntityHint.CanHint( Player player ) => GameManager.Current.State is InProgress or PostRound;
-
-	Panel IEntityHint.DisplayHint( Player player ) => new UI.CorpseHint( this );
-
-	void IEntityHint.Tick( Player player )
-	{
-		if ( Input.Down( GetSearchButton() ) && CanSearch() )
+		if ( Input.Down( searchButton ) && CanSearch() )
 		{
 			var hasCorpseInfo = Player.IsValid() && !Player.LastDamage.Equals( default( DamageInfo ) );
 
-			// Dead player wants to view the body, request a convert search.
+			// Dead player wants to view the body — request a covert search from the server.
 			if ( !player.IsAlive && !hasCorpseInfo )
-				ConvertSearch( NetworkIdent );
+				ConvertSearchCmd( GameObject.Id.GetHashCode() );
 
 			if ( Player.IsValid() && hasCorpseInfo )
 				UI.FullScreenHintMenu.Instance?.Open( new UI.InspectMenu( this ) );
@@ -335,22 +300,9 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 		UI.FullScreenHintMenu.Instance?.Close();
 	}
 
-	bool IUse.OnUse( Entity user )
-	{
-		Search( user as Player, Input.Down( InputAction.Run ) );
-		return false;
-	}
-
-	bool IUse.IsUsable( Entity user )
-	{
-		return GameManager.Current.State is InProgress || GameManager.Current.State is PostRound;
-	}
-
 	public bool CanSearch()
 	{
-		Game.AssertClient();
-
-		if ( Game.LocalPawn is not Player player )
+		if ( Player.Local is not Player player )
 			return false;
 
 		if ( GetSearchButton() == InputAction.PrimaryAttack )
@@ -361,11 +313,9 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 
 	public static string GetSearchButton()
 	{
-		Game.AssertClient();
+		var player = Player.Local;
 
-		var player = Game.LocalPawn as Player;
-
-		if ( player.ActiveCarriable is not Binoculars binoculars )
+		if ( player?.ActiveCarriable is not Binoculars binoculars )
 			return InputAction.Use;
 
 		if ( !binoculars.IsZoomed )
@@ -374,10 +324,19 @@ public partial class Corpse : ModelEntity, IEntityHint, IUse
 		return InputAction.PrimaryAttack;
 	}
 
-	[ConCmd.Server]
-	private static void ConvertSearch( int networkIdent )
+	[ConCmd( "ttt_convert_search" )]
+	private static void ConvertSearchCmd( int goId )
 	{
-		if ( ConsoleSystem.Caller.Pawn is not Player player || FindByIndex( networkIdent ) is not Corpse corpse )
+		if ( !Networking.IsHost )
+			return;
+
+		if ( Utils.GetPlayersWhere( p => p.Network.Owner == Rpc.Caller ).FirstOrDefault() is not Player player )
+			return;
+
+		var corpse = Game.ActiveScene?.GetAllComponents<Corpse>()
+			.FirstOrDefault( c => c.GameObject.Id.GetHashCode() == goId );
+
+		if ( corpse is null )
 			return;
 
 		corpse.Search( player, true, false );

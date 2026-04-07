@@ -3,117 +3,110 @@ using Sandbox;
 namespace TTT;
 
 [Title( "Player" ), Icon( "emoji_people" )]
-public partial class Player : AnimatedEntity
+public partial class Player : Component
 {
-	public Inventory Inventory { get; private init; }
-	public Perks Perks { get; private init; }
+	/// <summary>
+	/// The local player instance on this client.
+	/// </summary>
+	public static Player Local { get; private set; }
 
-	[ClientInput]
+	public Inventory Inventory { get; private set; }
+	public Perks Perks { get; private set; }
+	public ClothingContainer ClothingContainer { get; private set; } = new();
+
+	[RequireComponent] public SkinnedModelRenderer Renderer { get; private set; }
+	[RequireComponent] public CharacterController CharController { get; private set; }
+
+	// Input (processed on the owning client)
 	public Vector3 InputDirection { get; set; }
-
-	[ClientInput]
-	public Entity ActiveChildInput { get; set; }
-
-	[ClientInput]
-	public Angles ViewAngles { get; set; }
+	[Sync] public Angles ViewAngles { get; set; }
 	public Angles OriginalViewAngles { get; private set; }
 
-	public Vector3 EyePosition
-	{
-		get => Transform.PointToWorld( EyeLocalPosition );
-		set => EyeLocalPosition = Transform.PointToLocal( value );
-	}
-
 	/// <summary>
-	/// Position a player should be looking from in local to the entity coordinates.
+	/// Eye position in local (body) space.
 	/// </summary>
-	[Net, Predicted]
-	public Vector3 EyeLocalPosition { get; set; }
+	[Sync] public Vector3 EyeLocalPosition { get; set; }
 
 	/// <summary>
-	/// Rotation of the entity's "eyes", i.e. rotation for the camera when this entity is used as the view entity.
+	/// Eye rotation in local (body) space.
+	/// </summary>
+	[Sync] public Rotation EyeLocalRotation { get; set; }
+
+	/// <summary>
+	/// Eye position in world space.
+	/// </summary>
+	public Vector3 EyePosition => WorldPosition + WorldRotation * EyeLocalPosition;
+
+	/// <summary>
+	/// Eye rotation in world space.
 	/// </summary>
 	public Rotation EyeRotation
 	{
-		get => Transform.RotationToWorld( EyeLocalRotation );
-		set => EyeLocalRotation = Transform.RotationToLocal( value );
+		get => WorldRotation * EyeLocalRotation;
+		set => EyeLocalRotation = WorldRotation.Inverse * value;
 	}
 
-	/// <summary>
-	/// Rotation of the entity's "eyes", i.e. rotation for the camera when this entity is used as the view entity. In local to the entity coordinates.
-	/// </summary>
-	[Net, Predicted]
-	public Rotation EyeLocalRotation { get; set; }
+	public Ray AimRay => new( EyePosition, EyeRotation.Forward );
 
 	/// <summary>
-	/// Override the aim ray to use the player's eye position and rotation.
-	/// </summary>
-	public override Ray AimRay => new( EyePosition, EyeRotation.Forward );
-
-	/// <summary>
-	/// The player earns score by killing players on opposite teams, confirming bodies
+	/// The player earns score by killing players on opposite teams, confirming bodies,
 	/// or surviving the round.
 	/// </summary>
-	[Net]
-	public int Score { get; set; }
+	[Sync] public int Score { get; set; }
 
 	/// <summary>
-	/// The score gained during a single round. This gets added to the actual score
-	/// at the end of a round.
+	/// Score gained during a single round. Added to actual score at round end.
 	/// </summary>
 	public int RoundScore { get; set; }
 
-	public Player( IClient client ) : this()
-	{
-		client.Pawn = this;
-		SteamId = client.SteamId;
-		SteamName = client.Name;
-		BaseKarma = Karma.SavedPlayerValues.TryGetValue( client.SteamId, out var value ) ? value : Karma.StartValue;
-		ActiveKarma = BaseKarma;
-	}
+	[Sync] public ulong SteamId { get; private set; }
+	[Sync] public string SteamName { get; private set; }
 
-	public Player()
+	/// <summary>
+	/// Gets the network connection that owns this player.
+	/// </summary>
+	public Connection Client => Network.Owner;
+
+	protected override void OnStart()
 	{
+		if ( !IsProxy )
+		{
+			Local = this;
+		}
+
+		Tags.Add( "player" );
+
 		Inventory = new( this );
 		Perks = new( this );
-	}
 
-	public override void Spawn()
-	{
-		base.Spawn();
+		Renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
 
-		Tags.Add( "ignorereset", "player", "solid" );
-
-		SetModel( "models/citizen/citizen.vmdl" );
 		Role = new NoneRole();
-
 		Health = 0;
-		LifeState = LifeState.Respawnable;
-		Transmit = TransmitType.Always;
+		Status = PlayerStatus.Spectator;
 
-		EnableAllCollisions = false;
-		EnableDrawing = false;
-		EnableHideInFirstPerson = true;
-		EnableLagCompensation = true;
-		EnableShadowInFirstPerson = true;
-		EnableTouch = false;
+		if ( !IsProxy )
+		{
+			// Set initial camera
+			CameraMode.Current = new FreeCamera();
+		}
 	}
 
-	public override void ClientSpawn()
+	/// <summary>
+	/// Called on the server when a new connection becomes active (player joins).
+	/// </summary>
+	public void OnConnectionActive( Connection connection )
 	{
-		base.ClientSpawn();
-
-		Role = new NoneRole();
-
-		if ( IsLocalPawn )
-			CameraMode.Current = new FreeCamera();
+		SteamId = connection.SteamId;
+		SteamName = connection.DisplayName;
+		BaseKarma = Karma.SavedPlayerValues.TryGetValue( connection.SteamId, out var value ) ? value : Karma.StartValue;
+		ActiveKarma = BaseKarma;
 	}
 
 	public void Respawn()
 	{
-		Game.AssertServer();
-
-		LifeState = LifeState.Respawnable;
+		if ( !Networking.IsHost )
+			return;
 
 		DeleteFlashlight();
 		DeleteItems();
@@ -121,55 +114,42 @@ public partial class Player : AnimatedEntity
 		ResetDamageData();
 		Role = new NoneRole();
 
-		Velocity = Vector3.Zero;
+		CharController.Velocity = Vector3.Zero;
 		Credits = 0;
 
 		if ( !IsForcedSpectator )
 		{
 			Health = MaxHealth;
 			Status = PlayerStatus.Alive;
-			LifeState = LifeState.Alive;
+			UpdateStatus();
 
-			UpdateStatus( To.Everyone );
+			CharController.Enabled = true;
+			Renderer.Enabled = true;
 
-			EnableAllCollisions = true;
-			EnableDrawing = true;
-			EnableTouch = true;
-
-			Controller = new WalkController();
-
-			// TODO: Facepunch issue, need to set the water level, unable to remove the component without getting a null ref.
-			// If the player respawns directly from water the water effect component doesn't get removed.
-			if ( Components.TryGet<Sandbox.Component.WaterEffectComponent>( out var waterComponent ) )
-				waterComponent.WaterLevel = 0;
-
-			CreateHull();
 			CreateFlashlight();
 			DressPlayer();
-			ResetInterpolation();
 
 			Event.Run( TTTEvent.Player.Spawned, this );
-			GameManager.Current.State.OnPlayerSpawned( this );
+			GameManager.Instance.State.OnPlayerSpawned( this );
 		}
 		else
 		{
 			Status = PlayerStatus.Spectator;
-			UpdateStatus( To.Everyone );
+			UpdateStatus();
 			MakeSpectator();
 		}
 
-		ClientRespawn( this );
+		BroadcastRespawn();
 	}
 
-	private void ClientRespawn()
+	[Broadcast]
+	private void BroadcastRespawn()
 	{
-		Game.AssertClient();
-
 		DeleteFlashlight();
 		ResetConfirmationData();
 		ResetDamageData();
 
-		if ( !IsLocalPawn )
+		if ( IsProxy )
 		{
 			Role = new NoneRole();
 		}
@@ -183,7 +163,7 @@ public partial class Player : AnimatedEntity
 		if ( IsSpectator )
 			return;
 
-		if ( IsLocalPawn )
+		if ( !IsProxy )
 			CameraMode.Current = new FirstPersonCamera();
 
 		CreateFlashlight();
@@ -191,35 +171,73 @@ public partial class Player : AnimatedEntity
 		Event.Run( TTTEvent.Player.Spawned, this );
 	}
 
-	public override void Simulate( IClient client )
+	protected override void OnUpdate()
 	{
-		SimulateAnimation( Controller );
-
-		if ( Input.Pressed( InputAction.Menu ) )
+		if ( !IsProxy )
 		{
-			if ( ActiveCarriable.IsValid() && _lastKnownCarriable.IsValid() )
-				(ActiveCarriable, _lastKnownCarriable) = (_lastKnownCarriable, ActiveCarriable);
+			// BuildInput equivalent
+			CheckAFK();
+
+			OriginalViewAngles = ViewAngles;
+			InputDirection = Input.AnalogMove;
+
+			if ( !Input.StopProcessing )
+			{
+				var look = Input.AnalogLook;
+
+				if ( ViewAngles.pitch > 90f || ViewAngles.pitch < -90f )
+					look = look.WithYaw( look.yaw * -1f );
+
+				var viewAngles = ViewAngles;
+				viewAngles += look;
+				viewAngles.pitch = viewAngles.pitch.Clamp( -89f, 89f );
+				viewAngles.roll = 0f;
+				ViewAngles = viewAngles.Normal;
+
+				ActiveCarriable?.BuildInput();
+			}
+
+			if ( Input.Pressed( InputAction.Menu ) )
+			{
+				if ( ActiveCarriable.IsValid() && _lastKnownCarriable.IsValid() )
+					(ActiveCarriable, _lastKnownCarriable) = (_lastKnownCarriable, ActiveCarriable);
+			}
 		}
 
-		if ( ActiveChildInput is Carriable carriable )
-			Inventory.SetActive( carriable );
+		// FrameSimulate
+		if ( !IsProxy )
+		{
+			ActiveCarriable?.FrameSimulate();
+			DisplayEntityHints();
+			ActivateRoleButton();
+		}
 
-		SimulateActiveCarriable();
-		PlayerUse();
+		SimulateAnimation();
+	}
+
+	protected override void OnFixedUpdate()
+	{
+		// Simulate
+		if ( !IsProxy )
+		{
+			if ( ActiveCarriable.IsValid() )
+				Inventory.SetActive( ActiveCarriable );
+
+			SimulateActiveCarriable();
+			PlayerUse();
+		}
 
 		if ( IsAlive )
 		{
-			Controller?.SetActivePlayer( this );
-			Controller?.Simulate();
-			SimulateFlashlight();
-			SimulatePerks();
+			if ( !IsProxy )
+			{
+				SimulateMovement();
+				SimulateFlashlight();
+				SimulatePerks();
+			}
 		}
 
-		if ( Game.IsClient )
-		{
-			ActivateRoleButton();
-		}
-		else
+		if ( Networking.IsHost )
 		{
 			if ( !IsAlive )
 			{
@@ -234,156 +252,71 @@ public partial class Player : AnimatedEntity
 		}
 	}
 
-	public override void FrameSimulate( IClient client )
-	{
-		Controller?.SetActivePlayer( this );
-		Controller?.FrameSimulate();
-		ActiveCarriable?.FrameSimulate( client );
-		DisplayEntityHints();
-	}
+	private TimeSince _timeSinceLastFootstep;
 
-	/// <summary>
-	/// Called from the gamemode, clientside only.
-	/// </summary>
-	public override void BuildInput()
-	{
-		CheckAFK();
-
-		OriginalViewAngles = ViewAngles;
-		InputDirection = Input.AnalogMove;
-
-		if ( Input.StopProcessing )
-			return;
-
-		var look = Input.AnalogLook;
-
-		if ( ViewAngles.pitch > 90f || ViewAngles.pitch < -90f )
-			look = look.WithYaw( look.yaw * -1f );
-
-		var viewAngles = ViewAngles;
-		viewAngles += look;
-		viewAngles.pitch = viewAngles.pitch.Clamp( -89f, 89f );
-		viewAngles.roll = 0f;
-		ViewAngles = viewAngles.Normal;
-
-		ActiveCarriable?.BuildInput();
-	}
-
-	TimeSince _timeSinceLastFootstep;
-
-	/// <summary>
-	/// A foostep has arrived!
-	/// </summary>
-	public override void OnAnimEventFootstep( Vector3 pos, int foot, float volume )
+	private void OnFootstep( SceneModel.FootstepEvent e )
 	{
 		if ( !IsAlive )
-			return;
-
-		if ( !Game.IsClient )
 			return;
 
 		if ( _timeSinceLastFootstep < 0.2f )
 			return;
 
-		volume *= FootstepVolume();
-
+		var volume = FootstepVolume();
 		_timeSinceLastFootstep = 0;
 
-		var trace = Trace.Ray( pos, pos + Vector3.Down * 20 )
+		var trace = Scene.Trace.Ray( e.Transform.Position, e.Transform.Position + Vector3.Down * 20 )
 			.Radius( 1 )
-			.Ignore( this )
+			.IgnoreGameObject( GameObject )
 			.Run();
 
 		if ( !trace.Hit )
 			return;
 
-		trace.Surface.DoFootstep( this, trace, foot, volume );
+		trace.Surface.DoFootstep( this, trace, e.Foot, volume );
 	}
 
 	public float FootstepVolume()
 	{
-		return Velocity.WithZ( 0 ).Length.LerpInverse( 0.0f, 200.0f ) * 5.0f;
+		return CharController.Velocity.WithZ( 0 ).Length.LerpInverse( 0.0f, 200.0f ) * 5.0f;
 	}
 
-	#region Controller
-	[Net, Predicted]
-	public WalkController Controller { get; set; }
-
-	private void SimulateAnimation( WalkController controller )
+	private void SimulateAnimation()
 	{
-		if ( controller == null )
-			return;
-
-		// where should we be rotated to
 		var turnSpeed = 0.02f;
-
-		Rotation rotation;
-
-		// If we're a bot, spin us around 180 degrees.
-		if ( Client.IsBot )
-			rotation = ViewAngles.WithYaw( ViewAngles.yaw + 180f ).ToRotation();
-		else
-			rotation = ViewAngles.ToRotation();
+		var rotation = ViewAngles.ToRotation();
 
 		var idealRotation = Rotation.LookAt( rotation.Forward.WithZ( 0 ), Vector3.Up );
-		Rotation = Rotation.Slerp( Rotation, idealRotation, controller.WishVelocity.Length * Time.Delta * turnSpeed );
-		Rotation = Rotation.Clamp( idealRotation, 45.0f, out var shuffle ); // lock facing to within 45 degrees of look direction
+		WorldRotation = Rotation.Slerp( WorldRotation, idealRotation, CharController.Velocity.Length * Time.Delta * turnSpeed );
+		WorldRotation = WorldRotation.Clamp( idealRotation, 45.0f, out var shuffle );
 
-		var animHelper = new CitizenAnimationHelper( this );
+		Renderer.Set( "wish_velocity", CharController.WishVelocity );
+		Renderer.Set( "velocity", CharController.Velocity );
+		Renderer.Set( "aim_yaw_offset", 0f );
+		Renderer.Set( "b_grounded", CharController.IsOnGround );
+		Renderer.Set( "duck_speed", IsDucking ? 1f : 0f );
 
-		animHelper.WithWishVelocity( controller.WishVelocity );
-		animHelper.WithVelocity( Velocity );
-		animHelper.WithLookAt( EyePosition + EyeRotation.Forward * 100.0f, 1.0f, 1.0f, 0.5f );
-		animHelper.AimAngle = rotation;
-		animHelper.FootShuffle = shuffle;
-		animHelper.DuckLevel = MathX.Lerp( animHelper.DuckLevel, controller.HasTag( "ducked" ) ? 1 : 0, Time.Delta * 10.0f );
-		animHelper.VoiceLevel = (Game.IsClient && Client.IsValid()) ? Client.Voice.LastHeard < 0.5f ? Client.Voice.CurrentLevel : 0.0f : 0.0f;
-		animHelper.IsGrounded = GroundEntity != null;
-		animHelper.IsSitting = controller.HasTag( "sitting" );
-		animHelper.IsNoclipping = controller.HasTag( "noclip" );
-		animHelper.IsClimbing = controller.HasTag( "climbing" );
-		animHelper.IsSwimming = this.GetWaterLevel() >= 0.5f;
-		animHelper.IsWeaponLowered = false;
+		// Aim look-at
+		var lookAt = EyePosition + EyeRotation.Forward * 100f;
+		Renderer.Set( "aim_eyes", lookAt );
+		Renderer.Set( "aim_head", lookAt );
+		Renderer.Set( "aim_body", lookAt );
+		Renderer.Set( "aim_weight", 1.0f );
+		Renderer.Set( "aim_body_weight", 1.0f );
 
-		if ( controller.HasEvent( "jump" ) )
-			animHelper.TriggerJump();
+		Renderer.Set( "shuffle", shuffle );
+		Renderer.Set( "b_sit", false );
+		Renderer.Set( "b_noclip", false );
 
 		if ( ActiveCarriable != _lastActiveCarriable )
-			animHelper.TriggerDeploy();
+			Renderer.Set( "b_deploy", true );
 
 		if ( ActiveCarriable is not null )
-			ActiveCarriable.SimulateAnimator( animHelper );
+			ActiveCarriable.SimulateAnimator( Renderer );
 		else
 		{
-			animHelper.HoldType = CitizenAnimationHelper.HoldTypes.None;
-			animHelper.AimBodyWeight = 0.5f;
-		}
-	}
-	#endregion
-
-	public void CreateHull()
-	{
-		SetupPhysicsFromAABB( PhysicsMotionType.Keyframed, new Vector3( -16, -16, 0 ), new Vector3( 16, 16, 72 ) );
-		EnableHitboxes = true;
-	}
-
-	public override void StartTouch( Entity other )
-	{
-		if ( !Game.IsServer )
-			return;
-
-		switch ( other )
-		{
-			case Ammo ammo:
-			{
-				ammo.StartTouch( this );
-				break;
-			}
-			case Carriable carriable:
-			{
-				Inventory.Pickup( carriable );
-				break;
-			}
+			Renderer.Set( "holdtype", (int)CitizenAnimationHelper.HoldTypes.None );
+			Renderer.Set( "aim_body_weight", 0.5f );
 		}
 	}
 
@@ -396,8 +329,7 @@ public partial class Player : AnimatedEntity
 	}
 
 	#region ActiveCarriable
-	[Net, Predicted]
-	public Carriable ActiveCarriable { get; set; }
+	[Sync] public Carriable ActiveCarriable { get; set; }
 
 	public Carriable _lastActiveCarriable;
 	public Carriable _lastKnownCarriable;
@@ -411,11 +343,11 @@ public partial class Player : AnimatedEntity
 			_lastActiveCarriable = ActiveCarriable;
 		}
 
-		if ( !ActiveCarriable.IsValid() || !ActiveCarriable.IsAuthority )
+		if ( !ActiveCarriable.IsValid() )
 			return;
 
 		if ( ActiveCarriable.TimeSinceDeployed > ActiveCarriable.Info.DeployTime )
-			ActiveCarriable.Simulate( Client );
+			ActiveCarriable.Simulate();
 	}
 
 	public void OnActiveCarriableChanged( Carriable previous, Carriable next )
@@ -425,22 +357,20 @@ public partial class Player : AnimatedEntity
 	}
 
 	/// <summary>
-	/// Get the resulting velocity of what we should be dropping items with.
+	/// Get the velocity to drop items with.
 	/// </summary>
-	/// <param name="throwUpwards">If the resulting velocity has an upwards arc.</param>
 	public Vector3 GetDropVelocity( bool throwUpwards = true )
 	{
-		return Velocity + (EyeRotation.Forward + (throwUpwards ? EyeRotation.Up : Vector3.Zero)) * 200;
+		return CharController.Velocity + (EyeRotation.Forward + (throwUpwards ? EyeRotation.Up : Vector3.Zero)) * 200;
 	}
 
 	private void CheckPlayerDropCarriable()
 	{
 		if ( Input.Pressed( InputAction.Drop ) && !Input.Down( InputAction.Run ) )
 		{
-			var droppedEntity = Inventory.DropActive();
-			if ( droppedEntity is not null )
-				if ( droppedEntity.PhysicsGroup is not null )
-					droppedEntity.PhysicsGroup.Velocity = GetDropVelocity();
+			var droppedCarriable = Inventory.DropActive();
+			if ( droppedCarriable is not null && droppedCarriable.Components.TryGet<Rigidbody>( out var rb ) )
+				rb.Velocity = GetDropVelocity();
 		}
 	}
 	#endregion
@@ -448,50 +378,17 @@ public partial class Player : AnimatedEntity
 	private void SimulatePerks()
 	{
 		foreach ( var perk in Perks )
-			perk.Simulate( Client );
-	}
-
-	public override void OnChildAdded( Entity child )
-	{
-		if ( child is Carriable carriable )
-			Inventory.OnChildAdded( carriable );
-	}
-
-	public override void OnChildRemoved( Entity child )
-	{
-		if ( child is Carriable carriable )
-			Inventory.OnChildRemoved( carriable );
-	}
-
-	protected override void OnComponentAdded( EntityComponent component )
-	{
-		Perks?.OnComponentAdded( component );
-	}
-
-	protected override void OnComponentRemoved( EntityComponent component )
-	{
-		Perks?.OnComponentRemoved( component );
+			perk.Simulate();
 	}
 
 	protected override void OnDestroy()
 	{
-		if ( Game.IsServer )
+		if ( Networking.IsHost )
 		{
-			Corpse?.Delete();
+			Corpse?.GameObject.Destroy();
 			Corpse = null;
 		}
 
 		DeleteFlashlight();
-
-		base.OnDestroy();
-	}
-
-	[ClientRpc]
-	public static void ClientRespawn( Player player )
-	{
-		if ( !player.IsValid() )
-			return;
-
-		player.ClientRespawn();
 	}
 }

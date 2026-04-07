@@ -5,31 +5,32 @@ namespace TTT;
 [Category( "Equipment" )]
 [ClassName( "ttt_equipment_radio" )]
 [Title( "Radio" )]
-public class Radio : Deployable<RadioEntity>
+public class Radio : Deployable
 {
-	protected override void OnDeploy( RadioEntity entity )
+	protected override void OnDeploy()
 	{
-		base.OnDeploy( entity );
+		var entity = Components.GetOrCreate<RadioEntity>();
+		entity.Initialize( PreviousOwner );
 
 		var radioComponent = PreviousOwner.Components.GetOrCreate<RadioComponent>();
 		radioComponent.Radio = entity;
 	}
 }
 
-public partial class RadioComponent : EntityComponent<Player>
+public partial class RadioComponent : Component
 {
-	[Net, Local]
 	public RadioEntity Radio { get; set; }
 
-	protected override void OnActivate()
+	protected override void OnStart()
 	{
-		if ( Entity.IsLocalPawn )
+		if ( Player.Local == Components.Get<Player>( FindMode.InSelf ) )
 			UI.InfoFeed.AddEntry( "Radio deployed, access it using the Role Menu." );
 	}
 
-	protected override void OnDeactivate()
+	protected override void OnDestroy()
 	{
-		if ( Entity.IsLocalPawn && Entity.Inventory.Find<Radio>() is null )
+		var player = Components.Get<Player>( FindMode.InSelf );
+		if ( Player.Local == player && player?.Inventory.Find<Radio>() is null )
 			UI.InfoFeed.AddEntry( "Your radio has been destroyed." );
 	}
 }

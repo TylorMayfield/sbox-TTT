@@ -5,7 +5,7 @@ namespace TTT;
 
 public partial class Player
 {
-	private readonly HashSet<int> _playersWhoKnowTheRole = new();
+	private readonly HashSet<ulong> _steamIdsWhoKnowTheRole = new();
 
 	private Role _role;
 	public Role Role
@@ -21,11 +21,11 @@ public partial class Player
 			_role = value;
 
 			_isRoleKnown = false;
-			_playersWhoKnowTheRole.Clear();
+			_steamIdsWhoKnowTheRole.Clear();
 
 			// Always send the role to this player's client
-			if ( Game.IsServer )
-				SendRole( To.Single( this ) );
+			if ( Networking.IsHost )
+				SendRole( Network.Owner );
 
 			_role.Select( this );
 
@@ -37,8 +37,8 @@ public partial class Player
 
 	private bool _isRoleKnown;
 	/// <summary>
-	/// Serverside, this means the role is publicly announced to everyone.<br/>
-	/// Clientside, this means we know this player's actual role.
+	/// Serverside: the role is publicly announced to everyone.<br/>
+	/// Clientside: we know this player's actual role.
 	/// </summary>
 	public bool IsRoleKnown
 	{
@@ -48,32 +48,45 @@ public partial class Player
 			if ( _isRoleKnown == value )
 				return;
 
-			if ( Game.IsServer && value )
-				SendRole( To.Everyone );
+			if ( Networking.IsHost && value )
+				SendRoleToAll();
 
 			_isRoleKnown = value;
 		}
 	}
 
 	/// <summary>
-	/// Sends the role to the given target.
+	/// Sends this player's role to a specific connection.
 	/// </summary>
-	/// <param name="to">The target.</param>
-	public void SendRole( To to )
+	public void SendRole( Connection to )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
-		foreach ( var client in to )
+		if ( _steamIdsWhoKnowTheRole.Contains( to.SteamId ) )
+			return;
+
+		_steamIdsWhoKnowTheRole.Add( to.SteamId );
+		BroadcastSetRole( to, Role.Info );
+	}
+
+	/// <summary>
+	/// Sends this player's role to all connections.
+	/// </summary>
+	private void SendRoleToAll()
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		foreach ( var connection in Connection.All )
 		{
-			var id = client.Pawn.NetworkIdent;
-
-			if ( _playersWhoKnowTheRole.Contains( id ) )
+			if ( _steamIdsWhoKnowTheRole.Contains( connection.SteamId ) )
 				continue;
 
-			_playersWhoKnowTheRole.Add( id );
-
-			ClientSetRole( To.Single( client ), Role.Info );
+			_steamIdsWhoKnowTheRole.Add( connection.SteamId );
 		}
+
+		BroadcastSetRoleToAll( Role.Info );
 	}
 
 	public void SetRole( RoleInfo roleInfo )
@@ -81,11 +94,20 @@ public partial class Player
 		Role = TypeLibrary.Create<Role>( roleInfo.ClassName );
 	}
 
-	[ClientRpc]
-	private void ClientSetRole( RoleInfo roleInfo )
+	[Broadcast]
+	private void BroadcastSetRole( Connection to, RoleInfo roleInfo )
+	{
+		if ( Rpc.Caller == to || (IsProxy && !Networking.IsHost) )
+		{
+			SetRole( roleInfo );
+			IsRoleKnown = true;
+		}
+	}
+
+	[Broadcast]
+	private void BroadcastSetRoleToAll( RoleInfo roleInfo )
 	{
 		SetRole( roleInfo );
-
 		IsRoleKnown = true;
 	}
 }

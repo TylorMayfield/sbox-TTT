@@ -9,25 +9,27 @@ public class FlareGun : Weapon
 {
 	public override string SlotText => AmmoClip.ToString();
 
-	public override void SimulateAnimator( CitizenAnimationHelper anim )
+	public override void SimulateAnimator( SkinnedModelRenderer renderer )
 	{
-		base.SimulateAnimator( anim );
-		anim.Handedness = CitizenAnimationHelper.Hand.Right;
+		base.SimulateAnimator( renderer );
+		renderer.Set( "holdtype_handedness", 1 ); // Right hand
 	}
 
-	protected override void OnHit( TraceResult trace )
+	protected override void OnHit( SceneTraceResult trace )
 	{
 		base.OnHit( trace );
 
 		// TODO: Use proper burning once FP implements it.
-		var burnDamage = DamageInfo.Generic( 25 )
-			.WithAttacker( Owner )
+		var burnDamage = new DamageInfo()
+			.WithDamage( 25 )
+			.WithAttacker( Owner.GameObject )
 			.WithTag( DamageTags.Burn )
-			.WithWeapon( this );
+			.WithWeapon( GameObject );
 
-		trace.Entity.TakeDamage( burnDamage );
+		var hitPlayer = trace.GameObject?.Components.Get<Player>( FindMode.InAncestors );
+		hitPlayer?.TakeDamage( burnDamage );
 
-		if ( trace.Entity is Corpse )
-			trace.Entity.Delete();
+		var corpse = trace.GameObject?.Components.Get<Corpse>( FindMode.InSelf );
+		corpse?.GameObject.Destroy();
 	}
 }

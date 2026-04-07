@@ -25,7 +25,7 @@ public abstract class Role : IEquatable<Role>, IEquatable<string>
 
 	public void Select( Player player )
 	{
-		if ( player.IsLocalPawn )
+		if ( !player.IsProxy )
 		{
 			Player.RoleButtons = GetRoleButtons();
 
@@ -43,9 +43,9 @@ public abstract class Role : IEquatable<Role>, IEquatable<string>
 
 	public void Deselect( Player player )
 	{
-		if ( player.IsLocalPawn )
+		if ( !player.IsProxy )
 			player.ClearButtons();
-		else if ( !Game.IsServer )
+		else if ( !Networking.IsHost )
 			player.Components.RemoveAny<UI.RolePlate>();
 
 		OnDeselect( player );
@@ -53,16 +53,16 @@ public abstract class Role : IEquatable<Role>, IEquatable<string>
 
 	protected virtual void OnSelect( Player player ) { }
 
-	protected virtual void OnDeselect(Player player ) { }
+	protected virtual void OnDeselect( Player player ) { }
 
 	protected List<RoleButton> GetRoleButtons()
 	{
-		Game.AssertClient();
+		if ( !Networking.IsHost )
+			return new();
 
-		return Entity.All
-				.OfType<RoleButton>()
+		return Game.ActiveScene?.GetAllComponents<RoleButton>()
 				.Where( x => x.IsValid() && (x.RoleName == "All" || this == x.RoleName) )
-				.ToList();
+				.ToList() ?? new();
 	}
 
 	public static IEnumerable<Player> GetPlayers<T>() where T : Role
@@ -79,7 +79,10 @@ public abstract class Role : IEquatable<Role>, IEquatable<string>
 	private static void OnPlayerRoleChanged( Player player, Role oldRole )
 	{
 		if ( oldRole is not null )
-			_players[oldRole.GetType()].Remove( player );
+		{
+			if ( _players.TryGetValue( oldRole.GetType(), out var oldSet ) )
+				oldSet.Remove( player );
+		}
 
 		var newRole = player.Role;
 		if ( newRole is not null )
@@ -94,12 +97,7 @@ public abstract class Role : IEquatable<Role>, IEquatable<string>
 	public static bool operator ==( Role left, Role right )
 	{
 		if ( left is null )
-		{
-			if ( right is null )
-				return true;
-
-			return false;
-		}
+			return right is null;
 
 		return left.Equals( right );
 	}

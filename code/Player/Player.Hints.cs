@@ -7,31 +7,34 @@ public partial class Player
 	public const float MaxHintDistance = 5000f;
 
 	private static Panel _currentHintPanel;
-	private static IEntityHint _currentHint;
+	private static ICarriableHint _currentHint;
 
 	private void DisplayEntityHints()
 	{
-		HoveredEntity = FindHovered();
+		var hovered = FindHoveredCarriable();
 
-		if ( HoveredEntity is not IEntityHint hint || _traceDistance > hint.HintDistance || !hint.CanHint( UI.Hud.DisplayedPlayer ) )
+		if ( hovered is null || _traceDistance > MaxHintDistance || !hovered.CanHint( UI.Hud.DisplayedPlayer ) )
 		{
 			DeleteHint();
 			return;
 		}
 
-		if ( hint == _currentHint )
+		if ( hovered == _currentHint )
 		{
-			hint.Tick( UI.Hud.DisplayedPlayer );
+			hovered.Tick( UI.Hud.DisplayedPlayer );
 			return;
 		}
 
 		DeleteHint();
 
-		_currentHintPanel = hint.DisplayHint( UI.Hud.DisplayedPlayer );
-		_currentHintPanel.Parent = UI.HintDisplay.Instance;
-		_currentHintPanel.Enabled( true );
+		_currentHintPanel = hovered.DisplayHint( UI.Hud.DisplayedPlayer );
+		if ( _currentHintPanel is not null )
+		{
+			_currentHintPanel.Parent = UI.HintDisplay.Instance;
+			_currentHintPanel.Enabled( true );
+		}
 
-		_currentHint = hint;
+		_currentHint = hovered;
 	}
 
 	private static void DeleteHint()
@@ -40,5 +43,14 @@ public partial class Player
 		_currentHintPanel = null;
 		UI.FullScreenHintMenu.Instance?.Close();
 		_currentHint = null;
+	}
+
+	private ICarriableHint FindHoveredCarriable()
+	{
+		var hovered = FindHoveredGameObject();
+		if ( hovered is null )
+			return null;
+
+		return hovered.Components.TryGet<ICarriableHint>( out var hint ) ? hint : null;
 	}
 }

@@ -11,7 +11,7 @@ public partial class Player
 	private Vector3 _lastAfkObservedPosition;
 	private Vector3 _lastAfkObservedInput;
 	private Angles _lastAfkObservedViewAngles;
-	private Entity _lastAfkObservedActiveChild;
+	private Carriable _lastAfkObservedActiveCarriable;
 
 	private void CheckAFK()
 	{
@@ -31,14 +31,14 @@ public partial class Player
 		if ( hasUiLikeActivity && _timeSinceLastAfkHeartbeat > 1f )
 		{
 			_timeSinceLastAfkHeartbeat = 0f;
-			SendAfkHeartbeat();
+			SendAfkHeartbeatToServer();
 		}
 	}
 
 	[TTTEvent.Player.Spawned]
 	private static void ResetAfkTrackingOnSpawn( Player player )
 	{
-		if ( !Game.IsServer || !player.IsValid() )
+		if ( !Networking.IsHost || !player.IsValid() )
 			return;
 
 		player.ResetAfkTracking();
@@ -47,37 +47,38 @@ public partial class Player
 	private void ResetAfkTracking()
 	{
 		_timeSinceLastServerActivity = 0f;
-		_lastAfkObservedPosition = Position;
+		_lastAfkObservedPosition = WorldPosition;
 		_lastAfkObservedInput = InputDirection;
 		_lastAfkObservedViewAngles = ViewAngles;
-		_lastAfkObservedActiveChild = ActiveChildInput;
+		_lastAfkObservedActiveCarriable = ActiveCarriable;
 	}
 
-	[ConCmd.Server( Name = "ttt_afk_heartbeat" )]
-	public static void SendAfkHeartbeat()
+	[ConCmd( "ttt_afk_heartbeat" )]
+	public static void SendAfkHeartbeatToServer()
 	{
-		var player = ConsoleSystem.Caller?.Pawn as Player;
-		if ( !player.IsValid() || player.Client.IsBot )
+		if ( !Networking.IsHost )
+			return;
+
+		var player = GameManager.Instance?.FindPlayerByConnection( Rpc.Caller );
+		if ( !player.IsValid() || player.Network.Owner?.IsBot == true )
 			return;
 
 		player._timeSinceLastServerActivity = 0f;
 	}
 
-	[GameEvent.Tick.Server]
+	[GameEvent.Tick]
 	private static void TickAfkTracking()
 	{
-		foreach ( var client in Game.Clients )
-		{
-			if ( client.Pawn is not Player player || !player.IsValid() )
-				continue;
+		if ( !Networking.IsHost )
+			return;
 
+		foreach ( var player in Utils.GetPlayersWhere( _ => true ) )
 			player.TickAfkTrackingInternal();
-		}
 	}
 
 	private void TickAfkTrackingInternal()
 	{
-		if ( Client.IsBot || IsForcedSpectator )
+		if ( Network.Owner?.IsBot == true || IsForcedSpectator )
 		{
 			ResetAfkTracking();
 			return;
@@ -89,21 +90,21 @@ public partial class Player
 			return;
 		}
 
-		var moved = Position.Distance( _lastAfkObservedPosition ) > 1f;
+		var moved = WorldPosition.Distance( _lastAfkObservedPosition ) > 1f;
 		var changedInput = !_lastAfkObservedInput.AlmostEqual( InputDirection, 0.001f );
 		var changedView = MathF.Abs( ViewAngles.pitch - _lastAfkObservedViewAngles.pitch ) > 0.25f
 			|| MathF.Abs( ViewAngles.yaw - _lastAfkObservedViewAngles.yaw ) > 0.25f
 			|| MathF.Abs( ViewAngles.roll - _lastAfkObservedViewAngles.roll ) > 0.25f;
-		var changedActiveChild = _lastAfkObservedActiveChild != ActiveChildInput;
-		var velocityActivity = Velocity.Length > 5f;
+		var changedActiveChild = _lastAfkObservedActiveCarriable != ActiveCarriable;
+		var velocityActivity = CharController.Velocity.Length > 5f;
 
 		if ( moved || changedInput || changedView || changedActiveChild || velocityActivity )
 			_timeSinceLastServerActivity = 0f;
 
-		_lastAfkObservedPosition = Position;
+		_lastAfkObservedPosition = WorldPosition;
 		_lastAfkObservedInput = InputDirection;
 		_lastAfkObservedViewAngles = ViewAngles;
-		_lastAfkObservedActiveChild = ActiveChildInput;
+		_lastAfkObservedActiveCarriable = ActiveCarriable;
 
 		if ( _isHandlingAfkPunishment || _timeSinceLastServerActivity <= GameManager.AFKTimer )
 			return;
@@ -114,7 +115,8 @@ public partial class Player
 
 	private async void BeginAfkPunishment()
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		if ( !IsAlive )
 		{
@@ -122,15 +124,15 @@ public partial class Player
 			return;
 		}
 
-		Client.SetValue( "forced_spectator", true );
+		Network.Owner?.SetValue( "forced_spectator", true );
 
 		if ( GameManager.AfkFunDeath )
 		{
-			SetAnimParameter( "b_attack", true );
-			Velocity += Vector3.Up * 320f;
-			Particles.Create( "particles/discombobulator/explode.vpcf", Position + Vector3.Up * 32f );
-			Sound.FromWorld( "discombobulator_explode-1", Position );
-			UI.TextChat.AddInfoEntry( To.Everyone, $"{SteamName} was claimed by the idle gods." );
+			Renderer.Set( "b_attack", true );
+			CharController.Punch( Vector3.Up * 320f );
+			SceneParticles.PlayInstant( Scene, "particles/discombobulator/explode.vpcf", Transform.World.WithPosition( WorldPosition + Vector3.Up * 32f ) );
+			Sound.Play( "discombobulator_explode-1", WorldPosition );
+			UI.TextChat.AddInfoEntry( $"{SteamName} was claimed by the idle gods." );
 
 			await GameTask.DelaySeconds( 0.35f );
 
@@ -154,16 +156,18 @@ public partial class Player
 
 	private async void FinalizeAfkPunishment()
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
-		if ( GameManager.AfkAutoKick && Client.IsValid() )
+		var owner = Network.Owner;
+
+		if ( GameManager.AfkAutoKick && owner is not null )
 		{
 			var kickDelay = MathF.Max( GameManager.AfkKickDelay, 0f );
 			if ( kickDelay > 0f )
 				await GameTask.DelaySeconds( kickDelay );
 
-			if ( Client.IsValid() )
-				Client.Kick();
+			owner.Kick();
 		}
 
 		ResetAfkTracking();

@@ -12,19 +12,12 @@ namespace TTT;
 [Title( "DNA Scanner" )]
 public partial class DNAScanner : Carriable
 {
-	[Net, Local]
-	public IList<DNA> DNACollected { get; set; }
+	// DNA samples collected by this scanner (server-authoritative, owner-only view)
+	public List<DNA> DNACollected { get; private set; } = new();
 
-	// Waiting on https://github.com/Facepunch/sbox-issues/issues/1719
-	// Unable to network "DNA" by itself due to s&box...
-	[Net, Local]
-	public int? SelectedId { get; set; }
-
-	[Net, Local]
-	public bool AutoScan { get; set; } = false;
-
-	[Net, Local]
-	private float Charge { get; set; } = MaxCharge;
+	[Sync] public int? SelectedId { get; set; }
+	[Sync] public bool AutoScan { get; set; } = false;
+	[Sync] private float Charge { get; set; } = MaxCharge;
 
 	public override List<UI.BindingPrompt> BindingPrompts => new()
 	{
@@ -32,6 +25,7 @@ public partial class DNAScanner : Carriable
 		new( InputAction.SecondaryAttack, !AutoScan ? "Scan" : string.Empty ),
 		new( InputAction.View, "DNA Menu" )
 	};
+
 	public override string SlotText => $"{(int)Charge}%";
 	public bool IsCharging => Charge < MaxCharge;
 
@@ -39,7 +33,7 @@ public partial class DNAScanner : Carriable
 	private const float ChargePerSecond = 2.2f;
 	private UI.WorldMarker _marker;
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( Input.Pressed( InputAction.PrimaryAttack ) )
 			FetchDNA();
@@ -52,15 +46,15 @@ public partial class DNAScanner : Carriable
 	{
 		base.OnCarryDrop( dropper );
 
-		if ( !dropper.IsLocalPawn )
+		if ( Player.Local != dropper )
 			return;
 
-		_marker?.Delete();
+		_marker?.Delete( true );
 	}
 
 	public void Scan()
 	{
-		if ( !Game.IsServer || IsCharging )
+		if ( !Networking.IsHost || IsCharging )
 			return;
 
 		var selectedDNA = FindSelectedDNA( SelectedId );
@@ -68,26 +62,24 @@ public partial class DNAScanner : Carriable
 			return;
 
 		var target = selectedDNA.GetTarget();
-		if ( !target.IsValid() )
+		if ( target is null || !target.IsValid() )
 		{
 			RemoveDNA( selectedDNA );
-			UI.InfoFeed.AddEntry( To.Single( Owner ), "DNA not detected in area." );
+			BroadcastInfoEntry( Owner.Network.Owner, "DNA not detected in area." );
 			return;
 		}
 
-		var dist = Owner.Position.Distance( target.Position );
+		var dist = Owner.WorldPosition.Distance( target.WorldPosition );
 		Charge = Math.Max( 0, Charge - Math.Max( 4, dist / 25f ) );
-		UpdateMarker( To.Single( Owner ), target.Position );
+		BroadcastUpdateMarker( Owner.Network.Owner, target.WorldPosition );
 	}
 
 	public void RemoveDNA( DNA dna )
 	{
-		Game.AssertServer();
-
 		if ( dna.Id == SelectedId )
 		{
 			SelectedId = null;
-			DeleteMarker( To.Single( Owner ) );
+			BroadcastDeleteMarker( Owner.Network.Owner );
 		}
 
 		DNACollected.Remove( dna );
@@ -95,25 +87,25 @@ public partial class DNAScanner : Carriable
 
 	private void FetchDNA()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
-			.Ignore( this )
-			.Ignore( Owner )
+		var trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
+			.IgnoreGameObject( GameObject )
+			.IgnoreGameObject( Owner.GameObject )
 			.WithTag( "interactable" )
 			.Run();
 
-		if ( !trace.Entity.IsValid() )
+		if ( !trace.Hit || trace.GameObject is null )
 			return;
 
-		if ( trace.Entity is Corpse corpse && !corpse.Player.IsConfirmedDead )
+		if ( trace.GameObject.Components.TryGet<Corpse>( out var corpse ) && !corpse.Player.IsConfirmedDead )
 		{
-			UI.InfoFeed.AddEntry( To.Single( Owner ), "Corpse must be identified to retrieve DNA sample." );
+			BroadcastInfoEntry( Owner.Network.Owner, "Corpse must be identified to retrieve DNA sample." );
 			return;
 		}
 
-		var samples = trace.Entity.Components.GetAll<DNA>();
+		var samples = trace.GameObject.Components.GetAll<DNA>();
 		if ( !samples.Any() )
 			return;
 
@@ -134,7 +126,7 @@ public partial class DNAScanner : Carriable
 		}
 
 		if ( totalCollected > 0 )
-			UI.InfoFeed.AddEntry( To.Single( Owner ), $"Collected {totalCollected} new DNA sample(s)." );
+			BroadcastInfoEntry( Owner.Network.Owner, $"Collected {totalCollected} new DNA sample(s)." );
 	}
 
 	private DNA FindSelectedDNA( int? id )
@@ -149,10 +141,10 @@ public partial class DNAScanner : Carriable
 		return null;
 	}
 
-	[GameEvent.Tick.Server]
-	private void ServerTick()
+	[GameEvent.Tick]
+	private void OnTick()
 	{
-		if ( Owner is null )
+		if ( !Networking.IsHost || Owner is null )
 			return;
 
 		Charge = Math.Min( Charge + ChargePerSecond * Time.Delta, MaxCharge );
@@ -161,85 +153,95 @@ public partial class DNAScanner : Carriable
 			Scan();
 	}
 
-	[ClientRpc]
-	private void UpdateMarker( Vector3 pos )
+	[Broadcast]
+	private static void BroadcastUpdateMarker( Connection to, Vector3 pos )
 	{
-		PlaySound( "dna-beep" );
-		_marker?.Delete();
-		_marker = new UI.WorldMarker
-		(
+		if ( Connection.Local != to )
+			return;
+
+		Sound.Play( "dna-beep", pos );
+
+		var player = Player.Local;
+		if ( player is null )
+			return;
+
+		var scanner = player.Inventory.Find<DNAScanner>();
+		if ( scanner is null )
+			return;
+
+		scanner._marker?.Delete( true );
+		scanner._marker = new UI.WorldMarker(
 			"/ui/dna-icon.png",
-			() => $"{(Game.LocalPawn as Player).Position.Distance( pos ).SourceUnitsToMeters():n0}m",
+			() => $"{Player.Local.WorldPosition.Distance( pos ).SourceUnitsToMeters():n0}m",
 			() => pos
 		);
-		UI.WorldPoints.Instance.AddChild( _marker );
+		UI.WorldPoints.Instance?.AddChild( scanner._marker );
 	}
 
-	[ClientRpc]
-	private void DeleteMarker()
+	[Broadcast]
+	private static void BroadcastDeleteMarker( Connection to )
 	{
-		_marker?.Delete();
+		if ( Connection.Local != to )
+			return;
+
+		var scanner = Player.Local?.Inventory.Find<DNAScanner>();
+		scanner?._marker?.Delete( true );
+	}
+
+	[Broadcast]
+	private static void BroadcastInfoEntry( Connection to, string message )
+	{
+		if ( Connection.Local != to )
+			return;
+
+		UI.InfoFeed.AddEntry( message );
 	}
 }
 
-public partial class DNA : EntityComponent
+public sealed partial class DNA : Component
 {
-	// Waiting on https://github.com/Facepunch/sbox-issues/issues/1719
-	[Net]
 	public int Id { get; private set; }
 	private static int _internalId = Game.Random.Int( 0, 500 );
 
-	[Net]
 	public string SourceName { get; private set; }
-
-	public Player TargetPlayer { get; private set; }
+	public Player TargetPlayer { get; set; }
 	public TimeUntil TimeUntilDecayed { get; private set; }
 
-	public DNA() { }
-
-	public DNA( Player player )
+	protected override void OnStart()
 	{
-		TargetPlayer = player;
-	}
-
-	protected override void OnActivate()
-	{
-		if ( Game.IsClient )
+		if ( !Networking.IsHost )
 			return;
 
 		Id = _internalId++;
 
-		switch ( Entity )
+		var corpse = Components.Get<Corpse>( FindMode.InSelf );
+		if ( corpse is not null )
 		{
-			case Corpse corpse:
-			{
-				var distance = Vector3.DistanceBetween( corpse.Player.Position, corpse.Player.LastAttacker.Position ).SourceUnitsToMeters();
-				SourceName = $"{corpse.Player.SteamName}'s corpse";
-				TimeUntilDecayed = MathF.Pow( 0.74803f * distance, 2 ) + 100;
+			var lastAttacker = corpse.Player?.LastAttacker?.Components.Get<Player>();
+			var distance = lastAttacker is not null
+				? Vector3.DistanceBetween( corpse.Player.WorldPosition, lastAttacker.WorldPosition ).SourceUnitsToMeters()
+				: 0f;
 
-				break;
-			}
-			default:
-			{
-				// Use: DisplayInfo.For( this ).Name
-				SourceName = Entity.ClassName;
-				TimeUntilDecayed = float.MaxValue; // Never should decay.
-
-				break;
-			}
+			SourceName = $"{corpse.Player?.SteamName}'s corpse";
+			TimeUntilDecayed = MathF.Pow( 0.74803f * distance, 2 ) + 100;
+		}
+		else
+		{
+			SourceName = TypeLibrary.GetType( GetType() )?.ClassName ?? "unknown";
+			TimeUntilDecayed = float.MaxValue;
 		}
 	}
 
-	public Entity GetTarget()
+	public Component GetTarget()
 	{
-		if ( !TargetPlayer.IsValid() )
+		if ( TargetPlayer is null || !TargetPlayer.IsValid() )
 			return null;
 
-		var decoyComponent = TargetPlayer.Components.Get<DecoyComponent>();
-		if ( decoyComponent is not null && decoyComponent.Decoy.IsValid() )
+		var decoyComponent = TargetPlayer.Components.Get<DecoyComponent>( FindMode.InSelf );
+		if ( decoyComponent?.Decoy is not null && decoyComponent.Decoy.IsValid() )
 			return decoyComponent.Decoy;
 
-		return TargetPlayer.IsAlive ? TargetPlayer : TargetPlayer.Corpse;
+		return TargetPlayer.IsAlive ? (Component)TargetPlayer : TargetPlayer.Corpse;
 	}
 
 	[TTTEvent.Round.Start]

@@ -8,19 +8,11 @@ namespace TTT;
 [Title( "Teleporter" )]
 public partial class Teleporter : Carriable
 {
-	[Net, Predicted]
-	public int Charges { get; private set; } = 16;
+	[Sync] public int Charges { get; private set; } = 16;
+	[Sync] public bool IsTeleporting { get; private set; }
 
-	[Net, Predicted]
-	public bool IsTeleporting { get; private set; }
-
-	[Net, Local, Predicted]
 	public bool LocationIsSet { get; private set; }
-
-	[Net, Local, Predicted]
 	public TimeSince TimeSinceAction { get; private set; }
-
-	[Net, Local, Predicted]
 	public TimeSince TimeSinceStartedTeleporting { get; private set; }
 
 	public override string SlotText => Charges.ToString();
@@ -33,7 +25,7 @@ public partial class Teleporter : Carriable
 	private const float TeleportTime = 4f;
 	private bool _hasReachedLocation;
 	private Vector3 _teleportLocation;
-	private Particles _particle;
+	private SceneParticles _particle;
 
 	public override void ActiveStart( Player player )
 	{
@@ -46,24 +38,30 @@ public partial class Teleporter : Carriable
 	{
 		base.ActiveEnd( player, dropped );
 
-		_particle?.Destroy( true );
+		_particle?.Delete();
+		_particle = null;
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( IsTeleporting )
 		{
-			_particle ??= Particles.Create( "particles/teleporter/teleport.vpcf", Owner, true );
+			if ( _particle == null )
+			{
+				var attachment = Owner.Components.Get<SkinnedModelRenderer>()?.GetAttachment( "spine" );
+				if ( attachment.HasValue )
+					_particle = SceneParticles.Play( Scene, "particles/teleporter/teleport.vpcf", attachment.Value );
+			}
 
 			if ( TimeSinceStartedTeleporting >= TeleportTime / 2 )
 			{
-				if ( Game.IsServer && !_hasReachedLocation )
+				if ( Networking.IsHost && !_hasReachedLocation )
 					Teleport();
 
 				if ( TimeSinceStartedTeleporting >= TeleportTime )
 				{
 					IsTeleporting = false;
-					_particle?.Destroy();
+					_particle?.Delete();
 					_particle = null;
 				}
 			}
@@ -74,8 +72,8 @@ public partial class Teleporter : Carriable
 		if ( Charges <= 0 || TimeSinceAction < 1f )
 			return;
 
-		// We can't do anything if we aren't standing on the ground
-		if ( Owner.GroundEntity is not WorldEntity )
+		// Can't teleport unless standing on the ground.
+		if ( !Owner.CharController.IsOnGround )
 			return;
 
 		if ( Input.Pressed( InputAction.PrimaryAttack ) )
@@ -84,10 +82,7 @@ public partial class Teleporter : Carriable
 		}
 		else if ( Input.Pressed( InputAction.SecondaryAttack ) )
 		{
-			using ( LagCompensation() )
-			{
-				SetLocation();
-			}
+			SetLocation();
 		}
 	}
 
@@ -106,15 +101,11 @@ public partial class Teleporter : Carriable
 
 	private void SetLocation()
 	{
-		var trace = Trace.Ray( Owner.Position, Owner.Position )
-			.StaticOnly()
-			.Run();
-
 		LocationIsSet = true;
 		TimeSinceAction = 0;
-		_teleportLocation = trace.EndPosition;
+		_teleportLocation = Owner.WorldPosition;
 
-		if ( Game.IsClient && Prediction.FirstTime )
+		if ( !Networking.IsHost )
 			UI.InfoFeed.AddEntry( "Teleport location set." );
 	}
 
@@ -133,27 +124,27 @@ public partial class Teleporter : Carriable
 	private void Teleport()
 	{
 		_hasReachedLocation = true;
-		Owner.Position = _teleportLocation;
+		Owner.WorldPosition = _teleportLocation;
 
-		// TeleFrag players.
-		var bbox = Owner.CollisionBounds + Owner.Position;
+		// TeleFrag players at destination.
+		var bbox = BBox.FromPositionAndSize( Owner.WorldPosition, new Vector3( 32f, 32f, 72f ) );
 
-		var damageInfo = DamageInfo.Generic( Player.MaxHealth )
-			.WithAttacker( Owner )
+		var damageInfo = new DamageInfo()
+			.WithDamage( Player.MaxHealth )
+			.WithAttacker( Owner.GameObject )
 			.WithTags( DamageTags.Explode, DamageTags.Silent )
-			.WithWeapon( this );
+			.WithWeapon( GameObject );
 
-		foreach ( var entity in FindInBox( bbox ) )
+		foreach ( var hitPlayer in Utils.GetPlayersWhere( p => p != Owner && p.IsAlive ) )
 		{
-			if ( entity != Owner )
-				entity.TakeDamage( damageInfo );
+			if ( bbox.Contains( hitPlayer.WorldPosition ) )
+				hitPlayer.TakeDamage( damageInfo );
 		}
 	}
 
 	protected override void OnDestroy()
 	{
-		base.OnDestroy();
-
-		_particle?.Destroy( true );
+		_particle?.Delete();
+		_particle = null;
 	}
 }

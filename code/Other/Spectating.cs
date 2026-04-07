@@ -4,18 +4,20 @@ namespace TTT;
 
 public static class Spectating
 {
-	[ConVar.ClientData] private static bool forced_spectator { get; set; }
+	[ConVar( "forced_spectator" )]
+	private static bool ForcedSpectator { get; set; }
+
 	/// <summary>
-	/// If this is true, we will only be spectating next round.
-	/// </summary>	
+	/// If true, this player will only be spectating next round.
+	/// </summary>
 	public static bool IsForced
 	{
-		get => forced_spectator;
+		get => ForcedSpectator;
 		internal set
 		{
-			forced_spectator = value;
+			ForcedSpectator = value;
 
-			if ( !value || (Game.LocalPawn is Player player && !player.IsAlive) )
+			if ( !value || (Player.Local is Player player && !player.IsAlive) )
 				return;
 
 			GameManager.Kill();
@@ -30,7 +32,7 @@ public static class Spectating
 	private static int _spectatedPlayerIndex;
 
 	/// <summary>
-	/// Cycles through player list to find a spectating target.
+	/// Cycles through the player list to find a spectating target.
 	/// </summary>
 	/// <param name="forward">Determines if we cycle forwards or backwards.</param>
 	public static void FindPlayer( bool forward )

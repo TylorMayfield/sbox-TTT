@@ -1,55 +1,29 @@
-using Editor;
 using Sandbox;
 
 namespace TTT;
 
-[ClassName( "ttt_role_button" )]
-[Description( "On-screen button that can be pressed by users with the specified role." )]
-[HammerEntity]
-[Sphere( "radius" )]
-[Title( "Role Button" )]
-public partial class RoleButton : Entity
+public sealed class RoleButton : Component
 {
-	[Title( "Role" )]
-	[Description( "The name of the `Role` to check for. Ex. Innocent, Detective, Traitor" )]
-	[Net, Property]
-	public string RoleName { get; private set; } = "Traitor";
-
-	[Description( "On screen tooltip shown on button." )]
-	[Net, Property]
-	public string Description { get; private set; }
-
-	[Description( "Maximum radius a player can see and activate a button. Buttons are fully opaque within 512 units." )]
-	[Net, Property]
-	public int Radius { get; private set; } = 100;
-
-	[Description( "Delay in seconds until button will reactive once triggered. Hammer doesn't like using decimal values, so this only takes integers." )]
 	[Property]
-	public int Delay { get; private set; } = 1;
+	public string RoleName { get; set; } = "Traitor";
 
-	[Description( "Only allows button to be pressed once per round." )]
 	[Property]
-	public bool RemoveOnPress { get; private set; } = false;
+	public string Description { get; set; }
 
-	[Description( "Is the button locked? If enabled, button needs to be unlocked with the `Unlock` or `Toggle` input." )]
-	[Net, Property]
-	public bool Locked { get; private set; } = false;
+	[Property]
+	public int Radius { get; set; } = 100;
 
-	[Net]
-	public TimeUntil NextUse { get; private set; }
+	[Property]
+	public int Delay { get; set; } = 1;
 
-	[Net]
-	public bool IsRemoved { get; private set; }
+	[Property]
+	public bool RemoveOnPress { get; set; } = false;
 
-	protected Output OnPressed { get; set; }
+	[Sync] public bool Locked { get; set; } = false;
+	[Sync] public TimeUntil NextUse { get; private set; }
+	[Sync] public bool IsRemoved { get; private set; }
+
 	public bool IsDisabled => !NextUse || Locked || IsRemoved;
-
-	public override void Spawn()
-	{
-		base.Spawn();
-
-		Transmit = TransmitType.Always;
-	}
 
 	public bool CanUse( Player player )
 	{
@@ -59,41 +33,21 @@ public partial class RoleButton : Entity
 		return RoleName == "All" || player.Role == RoleName;
 	}
 
-	[Input]
-	public void Press( Entity activator )
+	public void Press( Player player )
 	{
-		if ( activator is not Player player )
+		if ( !CanUse( player ) )
 			return;
 
-		if ( CanUse( player ) )
+		if ( RemoveOnPress )
 		{
-			_ = OnPressed.Fire( player );
-
-			if ( RemoveOnPress )
-			{
-				IsRemoved = true;
-				return;
-			}
-
-			NextUse = Delay;
+			IsRemoved = true;
+			return;
 		}
+
+		NextUse = Delay;
 	}
 
-	[Input]
-	public void Lock()
-	{
-		Locked = true;
-	}
-
-	[Input]
-	public void Unlock()
-	{
-		Locked = false;
-	}
-
-	[Input]
-	public void Toggle()
-	{
-		Locked = !Locked;
-	}
+	public void Lock() => Locked = true;
+	public void Unlock() => Locked = false;
+	public void Toggle() => Locked = !Locked;
 }

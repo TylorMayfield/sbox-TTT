@@ -15,28 +15,34 @@ public enum SlotType
 }
 
 [Title( "Carriable" ), Icon( "luggage" )]
-public abstract partial class Carriable : AnimatedEntity, IEntityHint, IUse
+public abstract partial class Carriable : Component
 {
-	[Net, Local, Predicted]
 	public TimeSince TimeSinceDeployed { get; private set; }
-
 	public TimeSince TimeSinceDropped { get; private set; }
 
-	public new Player Owner
-	{
-		get => (Player)base.Owner;
-		set => base.Owner = value;
-	}
+	[Sync] public Player Owner { get; set; }
 
-	public BaseViewModel HandsModelEntity { get; private set; }
-	public CarriableInfo Info { get; private set; }
 	public Player PreviousOwner { get; private set; }
-	public BaseViewModel ViewModelEntity { get; protected set; }
+
+	[RequireComponent] public ModelRenderer WorldRenderer { get; private set; }
+	public SkinnedModelRenderer ViewModelRenderer { get; private set; }
+	public ModelRenderer HandsRenderer { get; private set; }
+
+	public CarriableInfo Info { get; private set; }
 
 	/// <summary>
-	/// Return the entity we should be spawning particles from.
+	/// Return the transform we should be spawning particles from.
 	/// </summary>
-	public virtual ModelEntity EffectEntity => ViewModelEntity.IsValid() && Camera.FirstPersonViewer == Owner ? ViewModelEntity : this;
+	public virtual Transform EffectTransform
+	{
+		get
+		{
+			if ( ViewModelRenderer.IsValid() && Player.Local == Owner )
+				return ViewModelRenderer.GetAttachment( "muzzle" ) ?? WorldTransform;
+
+			return WorldRenderer.GetAttachment( "muzzle" ) ?? WorldTransform;
+		}
+	}
 
 	/// <summary>
 	/// The text that will show up in the inventory slot.
@@ -44,80 +50,64 @@ public abstract partial class Carriable : AnimatedEntity, IEntityHint, IUse
 	public virtual string SlotText => string.Empty;
 
 	/// <summary>
-	/// Prompt(s) that appear at the bottom of the user's screen.
-	/// An InputButton glyph and a piece of text.
-	/// If the given text string is null or empty, it will not be displayed.
+	/// Prompts that appear at the bottom of the user's screen.
 	/// </summary>
 	public virtual List<UI.BindingPrompt> BindingPrompts => new();
 
 	public bool IsActive => Owner?.ActiveCarriable == this;
 
-	public override void Spawn()
+	protected override void OnStart()
 	{
-		base.Spawn();
-
 		Tags.Add( "interactable" );
-		PhysicsEnabled = true;
-		UsePhysicsCollision = true;
-		EnableHideInFirstPerson = true;
-		EnableShadowInFirstPerson = true;
 
-		if ( ClassName.IsNullOrEmpty() )
+		var className = TypeLibrary.GetType( GetType() )?.ClassName;
+		if ( className.IsNullOrEmpty() )
 		{
 			Log.Error( this + " doesn't have a class name!" );
 			return;
 		}
 
-		Info = GameResource.GetInfo<CarriableInfo>( ClassName );
-		Model = Info.WorldModel;
-	}
-
-	public override void ClientSpawn()
-	{
-		base.ClientSpawn();
-
-		if ( !ClassName.IsNullOrEmpty() )
-			Info = GameResource.GetInfo<CarriableInfo>( ClassName );
+		Info = GameResource.GetInfo<CarriableInfo>( className );
+		if ( Info is not null )
+			WorldRenderer.Model = Info.WorldModel;
 	}
 
 	public virtual void ActiveStart( Player player )
 	{
-		EnableDrawing = true;
+		WorldRenderer.Enabled = true;
 
-		if ( IsLocalPawn )
+		if ( Player.Local == Owner )
 		{
 			CreateViewModel();
 			CreateHudElements();
 
-			ViewModelEntity?.SetAnimParameter( "deploy", true );
+			ViewModelRenderer?.Set( "deploy", true );
 		}
 
 		TimeSinceDeployed = 0;
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( !Components.GetAll<DNA>().Any( ( dna ) => dna.TargetPlayer == Owner ) )
-			Components.Add( new DNA( Owner ) );
+		if ( !Components.GetAll<DNA>().Any( dna => dna.TargetPlayer == Owner ) )
+			Components.Create<DNA>().TargetPlayer = Owner;
 	}
 
 	public virtual void ActiveEnd( Player player, bool dropped )
 	{
 		if ( !dropped )
-			EnableDrawing = false;
+			WorldRenderer.Enabled = false;
 
-		if ( Game.IsClient )
+		if ( !Networking.IsHost )
 		{
 			DestroyViewModel();
 			DestroyHudElements();
 		}
 	}
 
-	public override void Simulate( IClient client ) { }
-
-	public override void FrameSimulate( IClient client ) { }
-
-	public override void BuildInput() { }
+	public virtual void Simulate() { }
+	public virtual void FrameSimulate() { }
+	public virtual void BuildInput() { }
 
 	public virtual bool CanCarry( Player carrier )
 	{
@@ -132,120 +122,96 @@ public abstract partial class Carriable : AnimatedEntity, IEntityHint, IUse
 
 	public virtual void OnCarryStart( Player carrier )
 	{
-		// Bandaid fix for: https://github.com/Facepunch/sbox-issues/issues/1702
-		if ( Game.IsClient )
-			Info ??= GameResource.GetInfo<CarriableInfo>( GetType() );
-
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
+		{
+			Info ??= GameResource.GetInfo<CarriableInfo>( TypeLibrary.GetType( GetType() )?.ClassName ?? "" );
 			return;
+		}
 
 		Owner = carrier;
-		EnableAllCollisions = false;
-		EnableDrawing = false;
+		GameObject.Parent = carrier.GameObject;
+		WorldRenderer.Enabled = false;
 	}
 
 	public virtual void OnCarryDrop( Player dropper )
 	{
 		PreviousOwner = dropper;
 
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		Owner = null;
-		EnableDrawing = true;
-		EnableAllCollisions = true;
+		WorldRenderer.Enabled = true;
+		GameObject.Parent = null;
 		TimeSinceDropped = 0;
-		Position = dropper.WorldSpaceBounds.Center;
+		WorldPosition = dropper.WorldPosition;
 	}
 
-	public override Sound PlaySound( string soundName, string attachment )
+	public virtual void SimulateAnimator( SkinnedModelRenderer renderer )
 	{
-		if ( Owner.IsValid() )
-			return Owner.PlaySound( soundName, attachment );
-
-		return base.PlaySound( soundName, attachment );
-	}
-
-	public virtual void SimulateAnimator( CitizenAnimationHelper anim )
-	{
-		anim.HoldType = Info.HoldType;
-		anim.AimBodyWeight = 1.0f;
-		anim.Handedness = 0;
+		renderer.Set( "holdtype", (int)(Info?.HoldType ?? CitizenAnimationHelper.HoldTypes.None) );
+		renderer.Set( "aim_body_weight", 1.0f );
+		renderer.Set( "holdtype_handedness", 0 );
 	}
 
 	/// <summary>
-	/// Create the viewmodel. You can override this in your base classes if you want
-	/// to create a certain viewmodel entity.
+	/// Create the view model. Override to customize.
 	/// </summary>
 	public virtual void CreateViewModel()
 	{
-		Game.AssertClient();
+		if ( Info?.ViewModel is null )
+			return;
 
-		if ( Info.ViewModel is not null )
-		{
-			ViewModelEntity = new ViewModel
-			{
-				EnableViewmodelRendering = true,
-				Model = Info.ViewModel,
-				Owner = Owner,
-				Position = Position
-			};
-		}
+		var vmGo = new GameObject( true, "ViewModel" );
+		ViewModelRenderer = vmGo.Components.Create<SkinnedModelRenderer>();
+		ViewModelRenderer.Model = Info.ViewModel;
+		// Set first-person rendering layer
+		vmGo.Tags.Add( "viewmodel" );
 
 		if ( Info.HandsModel is not null )
 		{
-			HandsModelEntity = new BaseViewModel
-			{
-				EnableViewmodelRendering = true,
-				Model = Info.HandsModel,
-				Owner = Owner,
-				Position = Position
-			};
-
-			HandsModelEntity.SetParent( ViewModelEntity, true );
+			var handsGo = new GameObject( true, "Hands" );
+			handsGo.Parent = vmGo;
+			HandsRenderer = handsGo.Components.Create<ModelRenderer>();
+			HandsRenderer.Model = Info.HandsModel;
+			handsGo.Tags.Add( "viewmodel" );
 		}
 	}
 
-	/// <summary>
-	/// We're done with the viewmodel - delete it
-	/// </summary>
 	protected virtual void DestroyViewModel()
 	{
-		ViewModelEntity?.Delete();
-		ViewModelEntity = null;
-		HandsModelEntity?.Delete();
-		HandsModelEntity = null;
+		ViewModelRenderer?.GameObject.Destroy();
+		ViewModelRenderer = null;
+		HandsRenderer?.GameObject.Destroy();
+		HandsRenderer = null;
 	}
 
 	protected virtual void CreateHudElements() { }
-
 	protected virtual void DestroyHudElements() { }
 
 	protected override void OnDestroy()
 	{
-		base.OnDestroy();
-
 		DestroyViewModel();
 		DestroyHudElements();
 	}
 
-	bool IEntityHint.CanHint( Player player ) => Owner is null;
+	public bool CanHint( Player player ) => Owner is null;
 
-	bool IUse.OnUse( Entity user )
+	public bool OnUse( Player user )
 	{
-		if ( user is Player player )
-			player.Inventory.OnUse( this );
+		if ( user is not null )
+			user.Inventory.OnUse( this );
 
 		return false;
 	}
 
-	bool IUse.IsUsable( Entity user ) => Owner is null && user is Player player && player.IsAlive;
+	public bool IsUsable( Player user ) => Owner is null && user is not null && user.IsAlive;
 
 #if SANDBOX && DEBUG
 	[Event.Hotload]
 	private void OnHotload()
 	{
-		Info = GameResource.GetInfo<CarriableInfo>( ClassName );
+		Info = GameResource.GetInfo<CarriableInfo>( TypeLibrary.GetType( GetType() )?.ClassName ?? "" );
 	}
 #endif
 }

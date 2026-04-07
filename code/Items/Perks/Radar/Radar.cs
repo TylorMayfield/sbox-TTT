@@ -8,81 +8,82 @@ namespace TTT;
 [Title( "Radar" )]
 public partial class Radar : Perk
 {
-	[Net, Local]
-	private TimeUntil TimeUntilExecution { get; set; }
+	public override string SlotText => ((int)_timeUntilExecution).ToString();
 
-	public override string SlotText => TimeUntilExecution.Relative.CeilToInt().ToString();
 	private readonly float _timeToExecute = 20f;
 	private RadarPointData[] _lastPositions;
 	private readonly List<UI.RadarPoint> _cachedPoints = new();
 	private readonly Color _defaultRadarColor = TeamExtensions.GetColor( Team.Innocents );
 	private readonly Vector3 _radarPointOffset = Vector3.Up * 45;
+	private RealTimeUntil _timeUntilExecution = 0f;
 
-	public Radar() => TimeUntilExecution = 0;
-
-	protected override void OnDeactivate()
+	protected override void OnDestroy()
 	{
-		base.OnDeactivate();
-
-		if ( Game.IsClient )
-			UI.WorldPoints.Instance.DeletePoints<UI.RadarPoint>();
+		if ( !IsProxy )
+			UI.WorldPoints.Instance?.DeletePoints<UI.RadarPoint>();
 	}
 
-	public override void Simulate( IClient client )
+	[GameEvent.Tick]
+	private void OnTick()
 	{
-		if ( !TimeUntilExecution )
+		if ( !Networking.IsHost )
 			return;
 
-		UpdatePositions();
-		TimeUntilExecution = _timeToExecute;
+		var owner = Components.Get<Player>( FindMode.InSelf );
+		if ( owner is null )
+			return;
+
+		if ( !_timeUntilExecution )
+			return;
+
+		ScanAndSend( owner );
+		_timeUntilExecution = _timeToExecute;
 	}
 
-	private void UpdatePositions()
+	private void ScanAndSend( Player owner )
 	{
-		if ( Game.IsClient )
+		var ownerConnection = owner.Network.Owner;
+		if ( ownerConnection is null )
+			return;
+
+		var pointData = new List<RadarPointData>();
+
+		foreach ( var player in Utils.GetPlayersWhere( p => p.IsAlive && p != owner ) )
 		{
-			ClearRadarPoints();
+			if ( !player.CanHint( owner ) )
+				continue;
 
-			if ( _lastPositions.IsNullOrEmpty() )
-				return;
-
-			foreach ( var radarData in _lastPositions )
-				_cachedPoints.Add( new UI.RadarPoint( radarData ) );
-
-			return;
+			pointData.Add( new RadarPointData
+			{
+				Position = player.WorldPosition + _radarPointOffset,
+				Color = player.Role == owner.Role ? owner.Role.Info.Color : _defaultRadarColor
+			} );
 		}
 
-		List<RadarPointData> pointData = new();
-		foreach ( var entity in Sandbox.Entity.All )
+		if ( owner.Team != Team.Traitors )
 		{
-			if ( entity is Player player )
-			{
-				if ( player.Client == Entity.Client )
-					continue;
-
-				if ( !player.IsAlive )
-					continue;
-
-				if ( !player.CanHint( Entity ) )
-					continue;
-
-				pointData.Add( new RadarPointData
-				{
-					Position = player.Position + _radarPointOffset,
-					Color = player.Role == Entity.Role ? Entity.Role.Info.Color : _defaultRadarColor
-				} );
-			}
-			else if ( Entity.Team != Team.Traitors && entity is DecoyEntity decoy )
+			foreach ( var decoy in Scene.GetAllComponents<DecoyEntity>() )
 			{
 				pointData.Add( new RadarPointData
 				{
-					Position = decoy.Position,
+					Position = decoy.WorldPosition,
 					Color = _defaultRadarColor
 				} );
 			}
 		}
 
-		SendPlayerRadarPositions( To.Single( Entity ), pointData.ToArray() );
+		BroadcastRadarPositions( ownerConnection, pointData.ToArray() );
+	}
+
+	private void UpdateDisplay()
+	{
+		ClearRadarPoints();
+
+		if ( _lastPositions.IsNullOrEmpty() )
+			return;
+
+		foreach ( var radarData in _lastPositions )
+			_cachedPoints.Add( new UI.RadarPoint( radarData ) );
 	}
 
 	private void ClearRadarPoints()
@@ -93,18 +94,22 @@ public partial class Radar : Perk
 		_cachedPoints.Clear();
 	}
 
-	[ClientRpc]
-	public static void SendPlayerRadarPositions( RadarPointData[] points )
+	[Broadcast]
+	public static void BroadcastRadarPositions( Connection to, RadarPointData[] points )
 	{
-		if ( Game.LocalPawn is not Player player )
+		if ( Connection.Local != to )
 			return;
 
-		var radar = player.Perks.Find<Radar>();
+		var player = Player.Local;
+		if ( player is null )
+			return;
+
+		var radar = player.Components.Get<Radar>( FindMode.InSelf );
 		if ( radar is null )
 			return;
 
 		radar._lastPositions = points;
-		radar.UpdatePositions();
+		radar.UpdateDisplay();
 	}
 }
 

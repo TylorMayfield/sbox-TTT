@@ -1,41 +1,34 @@
-using System.Linq;
 using Sandbox;
+using System.Threading.Tasks;
 
 namespace TTT;
 
 /// <summary>
-/// If this component is present on a prop any "PhysicsImpact" damage dealt to a player will be ignored.
+/// If this component is present on a prop, any "PhysicsImpact" damage dealt to a player will be ignored.
+/// Added briefly after a prop is thrown to prevent self-damage from the toss.
 /// </summary>
-public partial class IgnoreDamage : EntityComponent<ModelEntity>
+public sealed class IgnoreDamage : Component
 {
-	private ModelEntity _entity;
-
-	protected override void OnActivate()
+	protected override void OnStart()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		_entity = Entity;
-		_entity.Tags.Add( DamageTags.IgnoreDamage );
+		Tags.Add( DamageTags.IgnoreDamage );
+		_ = RemoveAfterDelay();
 	}
 
-	protected override void OnDeactivate()
+	protected override void OnDestroy()
 	{
-		if ( !Game.IsServer || !_entity.IsValid() )
-			return;
-
-		_entity.Tags.Remove( DamageTags.IgnoreDamage );
+		if ( Networking.IsHost )
+			Tags.Remove( DamageTags.IgnoreDamage );
 	}
 
-	[GameEvent.Tick.Server]
-	private void OnServerTick()
+	private async Task RemoveAfterDelay()
 	{
-		if ( !_entity.IsValid() )
-			return;
+		await GameTask.DelaySeconds( 0.5f );
 
-		// Once it no longer clips with any other entity remove the component.
-		// FindInBox includes the entity itself. therefore the Count() == 1.
-		if ( Sandbox.Entity.FindInBox( _entity.CollisionBounds + _entity.Position ).Count() == 1 )
-			_entity.Components.RemoveAny<IgnoreDamage>();
+		if ( IsValid )
+			Components.RemoveAny<IgnoreDamage>();
 	}
 }

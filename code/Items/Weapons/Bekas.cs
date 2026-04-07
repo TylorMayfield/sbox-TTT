@@ -1,12 +1,10 @@
 using Editor;
-using Sandbox;
 
 namespace TTT;
 
 [Category( "Weapons" )]
+[ClassName( "ttt_weapon_bekas" )]
 [EditorModel( "models/weapons/w_bekas.vmdl" )]
-[HammerEntity]
-[Library( "ttt_weapon_bekas" )]
 [Title( "Bekas-M" )]
 public partial class Bekas : Weapon
 {
@@ -32,9 +30,9 @@ public partial class Bekas : Weapon
 		return TimeSincePrimaryAttack > (1 / rate);
 	}
 
-	public override void Simulate( IClient owner )
+	public override void Simulate( Player player )
 	{
-		base.Simulate( owner );
+		base.Simulate( player );
 
 		if ( IsReloading && Input.Pressed( InputAction.PrimaryAttack ) )
 			_attackedDuringReload = true;
@@ -51,14 +49,14 @@ public partial class Bekas : Weapon
 		if ( !_attackedDuringReload && AmmoClip < Info.ClipSize && Owner.AmmoCount( Info.AmmoType ) > 0 )
 			Reload();
 		else
-			FinishReload();
+			BroadcastFinishReload();
 
 		_attackedDuringReload = false;
 	}
 
-	[ClientRpc]
-	protected void FinishReload()
+	[Broadcast]
+	protected void BroadcastFinishReload()
 	{
-		ViewModelEntity?.SetAnimParameter( "reload_finished", true );
+		ViewModelRenderer?.Set( "reload_finished", true );
 	}
 }

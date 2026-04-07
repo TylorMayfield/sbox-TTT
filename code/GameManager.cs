@@ -4,153 +4,150 @@ using System.Collections.Generic;
 
 namespace TTT;
 
-public partial class GameManager : Sandbox.GameManager
+[Title( "TTT Game Manager" )]
+public partial class GameManager : Component, Component.INetworkListener
 {
-	public static new GameManager Current { get; private set; }
+	public static GameManager Instance { get; private set; }
 
-	[Net, Change]
 	public BaseState State { get; private set; }
-	private BaseState _lastState;
 
-	[Net]
-	public IList<string> MapVoteIdents { get; set; }
+	[Sync] public int TotalRoundsPlayed { get; set; }
+	[Sync] public RealTimeUntil TimeUntilMapSwitch { get; set; }
 
-	[Net]
-	public int TotalRoundsPlayed { get; set; }
-
-	[Net]
-	public RealTimeUntil TimeUntilMapSwitch { get; set; } = TimeLimit;
-
+	public List<string> MapVoteIdents { get; set; } = new();
 	public int RTVCount { get; set; }
 
-	public GameManager()
+	[Property, ResourceType( "prefab" )]
+	public PrefabFile PlayerPrefab { get; set; }
+
+	protected override void OnStart()
 	{
-		Current = this;
+		Instance = this;
 
-		if ( Game.IsClient )
-			_ = new UI.Hud();
-
-		if ( Game.IsServer )
+		if ( Networking.IsHost )
+		{
 			LoadModerationData();
+			TimeUntilMapSwitch = TimeLimit;
+			ForceStateChange( new WaitingState() );
+		}
 
 		LoadResources();
-	}
-
-	public override void FrameSimulate( IClient client )
-	{
-		if ( client.Pawn is not Entity entity || !entity.IsValid() || !entity.IsAuthority )
-			return;
-
-		entity.FrameSimulate( client );
-		CameraMode.Current.FrameSimulate( client );
-	}
-
-	public override void BuildInput()
-	{
-		CameraMode.Current.BuildInput();
-
-		base.BuildInput();
-	}
-
-	/// <summary>
-	/// Changes the state if minimum players is met. Otherwise, force changes to "WaitingState"
-	/// </summary>
-	/// <param name="state"> The state to change to if minimum players is met.</param>
-	public void ChangeState( BaseState state )
-	{
-		Game.AssertServer();
-		Assert.NotNull( state );
-
-		var HasMinimumPlayers = Utils.GetPlayersWhere( p => !p.IsForcedSpectator ).Count >= MinPlayers;
-		ForceStateChange( HasMinimumPlayers ? state : new WaitingState() );
-	}
-
-	/// <summary>
-	/// Force changes a state regardless of player count.
-	/// </summary>
-	/// <param name="state"> The state to change to.</param>
-	public void ForceStateChange( BaseState state )
-	{
-		Game.AssertServer();
-
-		State?.Finish();
-		State = state;
-		State.Start();
-	}
-
-	public override void OnKilled( Entity pawn )
-	{
-		// Do nothing. Base implementation just adds to a kill feed and prints to console.
-	}
-
-	public override void ClientJoined( IClient client )
-	{
-		var player = new Player( client );
-
-		State.OnPlayerJoin( player );
-
-		UI.TextChat.AddInfoEntry( To.Everyone, $"{client.Name} has joined" );
-	}
-
-	public override void ClientDisconnect( IClient client, NetworkDisconnectionReason reason )
-	{
-		State.OnPlayerLeave( client.Pawn as Player );
-
-		UI.TextChat.AddInfoEntry( To.Everyone, $"{client.Name} has left ({reason})" );
-
-		// Only delete the pawn if they are alive.
-		// Keep the dead body otherwise on disconnect.
-		var player = client.Pawn as Player;
-		if ( player.IsValid() && player.IsAlive )
-			client.Pawn.Delete();
-
-		client.Pawn = null;
-	}
-
-	public override bool CanHearPlayerVoice( IClient source, IClient dest )
-	{
-		if ( source.Pawn is not Player sourcePlayer || dest.Pawn is not Player destPlayer )
-			return false;
-
-		if ( destPlayer.MuteFilter == MuteFilter.All )
-			return false;
-
-		if ( !sourcePlayer.IsAlive && !destPlayer.CanHearSpectators )
-			return false;
-
-		if ( sourcePlayer.IsAlive && !destPlayer.CanHearAlivePlayers )
-			return false;
-
-		return true;
-	}
-
-	public override void DoPlayerDevCam( IClient client )
-	{
-#if DEBUG
-		base.DoPlayerDevCam( client );
-#endif
-	}
-
-	public override void OnVoicePlayed( IClient client )
-	{
-		UI.VoiceChatDisplay.Instance?.OnVoicePlayed( client );
-	}
-
-	public override void PostLevelLoaded()
-	{
-		ForceStateChange( new WaitingState() );
-	}
-
-	public override void Shutdown()
-	{
-		if ( Game.IsServer )
-			SaveModerationData();
 	}
 
 	[GameEvent.Tick]
 	private void Tick()
 	{
 		State?.OnTick();
+	}
+
+	// INetworkListener - called on the host when a player connects
+	public void OnActive( Connection channel )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		// Spawn a player game object for this connection
+		GameObject playerGo;
+
+		if ( PlayerPrefab != null )
+		{
+			playerGo = SceneUtility.GetPrefabScene( PlayerPrefab ).Clone();
+		}
+		else
+		{
+			// Create player object programmatically
+			playerGo = new GameObject( true, $"Player ({channel.DisplayName})" );
+			playerGo.Tags.Add( "player" );
+
+			var renderer = playerGo.Components.Create<SkinnedModelRenderer>();
+			renderer.Model = Model.Load( "models/citizen/citizen.vmdl" );
+
+			var cc = playerGo.Components.Create<CharacterController>();
+			cc.Height = 72f;
+			cc.Radius = 16f;
+
+			var player = playerGo.Components.Create<Player>();
+		}
+
+		playerGo.NetworkSpawn( channel );
+
+		var playerComp = playerGo.Components.Get<Player>();
+		playerComp.OnConnectionActive( channel );
+
+		State.OnPlayerJoin( playerComp );
+
+		UI.TextChat.AddInfoEntry( $"{channel.DisplayName} has joined" );
+	}
+
+	public void OnDisconnected( Connection channel )
+	{
+		var player = FindPlayerByConnection( channel );
+
+		if ( player.IsValid() )
+			State.OnPlayerLeave( player );
+
+		UI.TextChat.AddInfoEntry( $"{channel.DisplayName} has left" );
+
+		// Only delete if alive; keep dead body on disconnect
+		if ( player.IsValid() && player.IsAlive )
+			player.GameObject.Destroy();
+	}
+
+	/// <summary>
+	/// Changes the state if minimum players is met. Otherwise, force changes to WaitingState.
+	/// </summary>
+	public void ChangeState( BaseState state )
+	{
+		Assert.NotNull( state );
+
+		var hasMinimumPlayers = Utils.GetPlayersWhere( p => !p.IsForcedSpectator ).Count >= MinPlayers;
+		ForceStateChange( hasMinimumPlayers ? state : new WaitingState() );
+	}
+
+	/// <summary>
+	/// Force changes a state regardless of player count.
+	/// </summary>
+	public void ForceStateChange( BaseState state )
+	{
+		State?.Finish();
+		State = state;
+		State.Start();
+	}
+
+	public bool CanHearPlayerVoice( Connection source, Connection dest )
+	{
+		var sourcePl = FindPlayerByConnection( source );
+		var destPl = FindPlayerByConnection( dest );
+
+		if ( sourcePl is null || destPl is null )
+			return false;
+
+		if ( destPl.MuteFilter == MuteFilter.All )
+			return false;
+
+		if ( !sourcePl.IsAlive && !destPl.CanHearSpectators )
+			return false;
+
+		if ( sourcePl.IsAlive && !destPl.CanHearAlivePlayers )
+			return false;
+
+		return true;
+	}
+
+	public void MoveToSpawnpoint( Player player )
+	{
+		var spawnpoints = Game.ActiveScene.GetAllComponents<SpawnPoint>().ToList();
+		if ( spawnpoints.Count == 0 )
+			return;
+
+		var sp = Game.Random.FromList( spawnpoints );
+		player.WorldPosition = sp.WorldPosition;
+		player.WorldRotation = sp.WorldRotation;
+	}
+
+	public Player FindPlayerByConnection( Connection connection )
+	{
+		return Utils.GetPlayersWhere( p => p.Network.Owner == connection ).FirstOrDefault();
 	}
 
 	private static void LoadResources()
@@ -184,12 +181,7 @@ public partial class GameManager : Sandbox.GameManager
 		Player.ClothingPresets[2].Add( ResourceLibrary.Get<Clothing>( "models/citizen_clothes/makeup/face_tattoos/face_tattoos.clothing" ) );
 		Player.ClothingPresets[2].Add( ResourceLibrary.Get<Clothing>( "models/citizen_clothes/shoes/boots/army_boots.clothing" ) );
 		Player.ClothingPresets[2].Add( ResourceLibrary.Get<Clothing>( "models/citizen/skin/muscley/muscley_02.clothing" ) );
-	}
 
-	private void OnStateChanged( BaseState oldState, BaseState newState )
-	{
-		_lastState?.Finish();
-		_lastState = newState;
-		_lastState?.Start();
+		Player.ChangeClothingPreset();
 	}
 }

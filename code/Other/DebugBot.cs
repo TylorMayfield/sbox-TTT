@@ -77,6 +77,20 @@ public partial class DebugBot : Bot
 		bot._pawn = bot.Client.Pawn as Player;
 	}
 
+	[ConCmd.Admin( "bot_add_multiple", Help = "Adds multiple bots at once. Usage: bot_add_multiple <count>" )]
+	private static void AddMultipleBots( int count = 1 )
+	{
+		if ( ConsoleSystem.Caller.Pawn is not Player player )
+			return;
+
+		for ( int i = 0; i < count; i++ )
+		{
+			var bot = new DebugBot();
+			bot._spawner = player;
+			bot._pawn = bot.Client.Pawn as Player;
+		}
+	}
+
 	public override void BuildInput()
 	{
 		_pawn.InputDirection = Vector3.Zero;

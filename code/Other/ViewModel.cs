@@ -2,7 +2,10 @@ using Sandbox;
 
 namespace TTT;
 
-public class ViewModel : BaseViewModel
+/// <summary>
+/// Handles viewmodel sway and bobbing. Attach this component to the viewmodel GameObject.
+/// </summary>
+public class ViewModel : Component
 {
 	protected float SwingInfluence = 0.02f;
 	protected float ReturnSpeed = 8.0f;
@@ -18,13 +21,26 @@ public class ViewModel : BaseViewModel
 	private float _yawInertia;
 	private float _pitchInertia;
 
-	public override void PlaceViewmodel()
+	protected SkinnedModelRenderer Renderer { get; private set; }
+
+	protected override void OnStart()
 	{
-		if ( !Game.LocalPawn.IsValid() )
+		Renderer = Components.Get<SkinnedModelRenderer>( FindMode.InSelf );
+	}
+
+	protected override void OnUpdate()
+	{
+		PlaceViewmodel();
+	}
+
+	protected virtual void PlaceViewmodel()
+	{
+		var cam = Game.ActiveScene?.Camera;
+		if ( cam is null )
 			return;
 
-		var inPos = Camera.Position;
-		var inRot = Camera.Rotation;
+		var inPos = cam.WorldPosition;
+		var inRot = cam.WorldRotation;
 
 		if ( !_activated )
 		{
@@ -37,20 +53,29 @@ public class ViewModel : BaseViewModel
 			_activated = true;
 		}
 
-		var cameraBoneIndex = GetBoneIndex( "camera" );
-		if ( cameraBoneIndex != -1 )
-			inRot *= Rotation.Inverse * GetBoneTransform( cameraBoneIndex ).Rotation;
+		if ( Renderer is not null )
+		{
+			var cameraBoneIndex = Renderer.Model?.BoneCount > 0
+				? Renderer.Model.Bones.GetBone( "camera" )?.Index ?? -1
+				: -1;
 
-		Position = inPos;
-		Rotation = inRot;
+			if ( cameraBoneIndex != -1 )
+			{
+				var boneTx = Renderer.GetBoneWorldTransform( cameraBoneIndex );
+				inRot *= WorldRotation.Inverse * boneTx.Rotation;
+			}
+		}
 
-		var newPitch = Rotation.Pitch();
-		var newYaw = Rotation.Yaw();
+		WorldPosition = inPos;
+		WorldRotation = inRot;
+
+		var newPitch = WorldRotation.Pitch();
+		var newYaw = WorldRotation.Yaw();
 
 		_pitchInertia = Angles.NormalizeAngle( newPitch - _lastPitch );
 		_yawInertia = Angles.NormalizeAngle( _lastYaw - newYaw );
 
-		var playerVelocity = Game.LocalPawn.Velocity;
+		var playerVelocity = Player.Local?.CharController?.Velocity ?? Vector3.Zero;
 		var verticalDelta = playerVelocity.z * Time.Delta;
 		var viewDown = Rotation.FromPitch( newPitch ).Up * -1.0f;
 		verticalDelta *= 1.0f - System.MathF.Abs( viewDown.Cross( Vector3.Down ).y );
@@ -60,7 +85,7 @@ public class ViewModel : BaseViewModel
 		var offset = CalcSwingOffset( pitchDelta, yawDelta );
 		offset += CalcBobbingOffset( playerVelocity );
 
-		Position += Rotation * offset;
+		WorldPosition += WorldRotation * offset;
 
 		_lastPitch = newPitch;
 		_lastYaw = newYaw;

@@ -4,21 +4,18 @@ namespace TTT;
 
 public partial class Player
 {
-	[Net, Predicted]
-	public bool FlashlightEnabled { get; private set; } = false;
-
-	[Net, Local, Predicted]
-	private TimeSince TimeSinceLightToggled { get; set; }
+	[Sync] public bool FlashlightEnabled { get; private set; } = false;
+	private TimeSince _timeSinceLightToggled;
 
 	/// <summary>
-	/// The third person flashlight.
+	/// The third person / world flashlight.
 	/// </summary>
-	private SpotLightEntity _worldLight;
+	private SpotLight _worldLight;
 
 	/// <summary>
-	/// The first person flashlight.
+	/// The first person / view flashlight.
 	/// </summary>
-	private SpotLightEntity _viewLight;
+	private SpotLight _viewLight;
 
 	public void SimulateFlashlight()
 	{
@@ -26,95 +23,96 @@ public partial class Player
 
 		if ( _worldLight.IsValid() )
 		{
-			var transform = GetAttachment( "eyes" ) ?? default;
-			_worldLight.Transform = transform;
+			var eyeTransform = Renderer.GetAttachment( "eyes" ) ?? Transform.World;
+			_worldLight.WorldTransform = eyeTransform;
 
 			if ( ActiveCarriable.IsValid() )
-				_worldLight.Transform = ActiveCarriable.GetAttachment( "muzzle" ) ?? transform;
+			{
+				var muzzleTransform = ActiveCarriable.WorldRenderer.GetAttachment( "muzzle" );
+				if ( muzzleTransform.HasValue )
+					_worldLight.WorldTransform = muzzleTransform.Value;
+			}
 		}
 
-		if ( TimeSinceLightToggled > 0.25f && toggle )
+		if ( _timeSinceLightToggled > 0.25f && toggle )
 		{
 			FlashlightEnabled = !FlashlightEnabled;
 
-			PlaySound( "flashlight-toggle" );
+			Sound.Play( "flashlight-toggle", WorldPosition );
 
 			if ( _worldLight.IsValid() )
 				_worldLight.Enabled = FlashlightEnabled;
 
-			TimeSinceLightToggled = 0;
+			_timeSinceLightToggled = 0;
 		}
 	}
 
 	protected void CreateFlashlight()
 	{
-		if ( Game.IsServer )
+		if ( Networking.IsHost )
 		{
-			_worldLight = CreateLight();
-			_worldLight.EnableHideInFirstPerson = true;
+			_worldLight = CreateSpotLight();
+			_worldLight.Tags.Add( "flashlight_world" );
 			FlashlightEnabled = false;
 		}
-		else
+
+		if ( !IsProxy )
 		{
-			_viewLight = CreateLight();
-			_viewLight.EnableViewmodelRendering = true;
+			_viewLight = CreateSpotLight();
+			_viewLight.Tags.Add( "flashlight_view", "viewmodel" );
 			_viewLight.Enabled = FlashlightEnabled;
 		}
 	}
 
 	protected void DeleteFlashlight()
 	{
-		_worldLight?.Delete();
+		_worldLight?.GameObject.Destroy();
 		_worldLight = null;
-		_viewLight?.Delete();
+		_viewLight?.GameObject.Destroy();
 		_viewLight = null;
 	}
 
 	[GameEvent.Client.Frame]
-	private void FrameUpdate()
+	private void FrameUpdateFlashlight()
 	{
 		if ( !_viewLight.IsValid() )
 			return;
 
-		_viewLight.Enabled = FlashlightEnabled && IsLocalPawn;
+		_viewLight.Enabled = FlashlightEnabled && !IsProxy;
 
 		if ( !_viewLight.Enabled )
 			return;
 
-		var eyeTransform = new Transform( EyePosition, EyeRotation );
-		_viewLight.Transform = eyeTransform;
+		_viewLight.WorldTransform = new Transform( EyePosition, EyeRotation );
 
 		if ( !ActiveCarriable.IsValid() )
 			return;
 
-		var muzzleTransform = ActiveCarriable.ViewModelEntity?.GetAttachment( "muzzle" );
-
+		var muzzleTransform = ActiveCarriable.ViewModelRenderer?.GetAttachment( "muzzle" );
 		if ( !muzzleTransform.HasValue )
 			return;
 
 		var mz = muzzleTransform.Value;
 
-		// First check if there is something like a door/wall between the muzzle and our eyes.
-		var muzzleTrace = Trace.Ray( mz.Position, EyePosition )
+		// Check for obstruction between muzzle and eyes
+		var muzzleTrace = Scene.Trace.Ray( mz.Position, EyePosition )
 			.Size( 2 )
-			.Ignore( this )
-			.Ignore( ActiveCarriable )
+			.IgnoreGameObject( GameObject )
+			.IgnoreGameObject( ActiveCarriable.GameObject )
 			.Run();
 
 		var downOffset = Vector3.Down * 2f;
 		var origin = mz.Position + downOffset;
 
-		// If there IS something between our eyes and the muzzle, add the distance.
 		if ( muzzleTrace.Hit )
 			origin = muzzleTrace.EndPosition + (mz.Rotation.Backward * muzzleTrace.Distance) + downOffset;
 
-		// Continue with the forward trace.
-		var destination = origin + mz.Rotation.Forward * _viewLight.Range;
+		var destination = origin + mz.Rotation.Forward * _viewLight.LightRange;
 		var direction = destination - origin;
 
-		var fwdTrace = Trace.Box( Vector3.One * 2, origin, destination )
-			.Ignore( this )
-			.Ignore( ActiveCarriable )
+		var fwdTrace = Scene.Trace.Box( BBox.FromPositionAndSize( Vector3.Zero, 2f ), origin, destination )
+			.IgnoreGameObject( GameObject )
+			.IgnoreGameObject( ActiveCarriable.GameObject )
 			.Run();
 
 		var pullbackAmount = 0.0f;
@@ -124,28 +122,25 @@ public partial class Player
 
 		origin -= direction * pullbackAmount;
 
-		_viewLight.Position = origin;
-		_viewLight.Rotation = mz.Rotation;
+		_viewLight.WorldPosition = origin;
+		_viewLight.WorldRotation = mz.Rotation;
 	}
 
-	private SpotLightEntity CreateLight()
+	private SpotLight CreateSpotLight()
 	{
-		return new SpotLightEntity
-		{
-			Enabled = false,
-			DynamicShadows = true,
-			Range = 1024,
-			Falloff = 1.0f,
-			LinearAttenuation = 0.0f,
-			QuadraticAttenuation = 1.0f,
-			Brightness = 2,
-			Color = Color.White,
-			InnerConeAngle = 20,
-			OuterConeAngle = 40,
-			FogStrength = 1.0f,
-			Owner = this,
-			Parent = this,
-			LightCookie = Texture.Load( "materials/effects/lightcookie.vtex" )
-		};
+		var go = new GameObject( true, "Flashlight" );
+		go.Parent = GameObject;
+		var light = go.Components.Create<SpotLight>();
+		light.Enabled = false;
+		light.Shadows = true;
+		light.LightRange = 1024f;
+		light.Attenuation = 1.0f;
+		light.Brightness = 2f;
+		light.LightColor = Color.White;
+		light.InnerConeAngle = 20f;
+		light.OuterConeAngle = 40f;
+		light.FogStrength = 1.0f;
+		light.Cookie = Texture.Load( "materials/effects/lightcookie.vtex" );
+		return light;
 	}
 }

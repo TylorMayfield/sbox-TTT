@@ -1,6 +1,7 @@
 using Sandbox;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 namespace TTT;
@@ -9,22 +10,20 @@ public static class Utils
 {
 	public static List<Player> GetPlayersWhere( Func<Player, bool> predicate )
 	{
-		List<Player> players = new();
-		foreach ( var client in Game.Clients )
-			if ( client.Pawn is Player player && predicate.Invoke( player ) )
-				players.Add( player );
+		if ( Game.ActiveScene is null )
+			return new();
 
-		return players;
+		return Game.ActiveScene.GetAllComponents<Player>()
+			.Where( predicate )
+			.ToList();
 	}
 
-	public static List<IClient> GetClientsWhere( Func<Player, bool> predicate )
+	public static List<Connection> GetClientsWhere( Func<Player, bool> predicate )
 	{
-		List<IClient> clients = new();
-		foreach ( var client in Game.Clients )
-			if ( client.Pawn is Player player && predicate.Invoke( player ) )
-				clients.Add( client );
-
-		return clients;
+		return GetPlayersWhere( predicate )
+			.Select( p => p.Network.Owner )
+			.Where( c => c != null )
+			.ToList();
 	}
 
 	public static async void DelayAction( float seconds, Action callback )

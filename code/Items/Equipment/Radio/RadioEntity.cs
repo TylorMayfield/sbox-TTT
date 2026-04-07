@@ -1,50 +1,55 @@
 using Sandbox;
+using System.Linq;
 
 namespace TTT;
 
-[ClassName( "ttt_entity_radio" )]
-[EditorModel( "models/radio/radio.vmdl" )]
-[Title( "Radio" )]
-public partial class RadioEntity : Prop, IEntityHint, IUse
+public sealed partial class RadioEntity : Component, ICarriableHint
 {
-	private static readonly Model _worldModel = Model.Load( "models/radio/radioterror.vmdl" );
+	public Player Planter { get; private set; }
 
-	public override void Spawn()
+	public void Initialize( Player planter )
 	{
-		base.Spawn();
-
-		Model = _worldModel;
-		SetupPhysicsFromModel( PhysicsMotionType.Dynamic );
-		Health = 100f;
+		Planter = planter;
 	}
 
 	protected override void OnDestroy()
 	{
-		Owner?.Components.RemoveAny<RadioComponent>();
-
-		base.OnDestroy();
+		Planter?.Components.RemoveAny<RadioComponent>();
 	}
 
-	bool IUse.OnUse( Entity user )
+	bool ICarriableHint.CanHint( Player player )
 	{
-		var player = user as Player;
-		player.Inventory.Add( new Radio() );
-		Delete();
-
-		return false;
+		return player.IsAlive && (Planter is null || player == Planter);
 	}
 
-	bool IUse.IsUsable( Entity user )
+	void ICarriableHint.Tick( Player player )
 	{
-		return user is Player player && player.IsAlive && (Owner is null || user == Owner);
-	}
-
-	[ConCmd.Server]
-	public static void PlayRadio( int id, string sound )
-	{
-		if ( Entity.FindByIndex( id ) is not RadioEntity radio || radio.Owner != ConsoleSystem.Caller.Pawn )
+		if ( !Networking.IsHost )
 			return;
 
-		radio.PlaySound( sound );
+		if ( !Input.Down( InputAction.Use ) )
+			return;
+
+		player.Inventory.Add( new Radio() );
+		GameObject.Destroy();
+	}
+
+	[ConCmd( "ttt_radio_play" )]
+	public static void PlayRadioCmd( int goId, string sound )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		var player = Utils.GetPlayersWhere( p => p.Network.Owner == Rpc.Caller ).FirstOrDefault();
+		if ( player is null )
+			return;
+
+		var radio = Game.ActiveScene?.GetAllComponents<RadioEntity>()
+			.FirstOrDefault( r => r.GameObject.Id.GetHashCode() == goId && r.Planter == player );
+
+		if ( radio is null )
+			return;
+
+		Sound.Play( sound, radio.WorldPosition );
 	}
 }

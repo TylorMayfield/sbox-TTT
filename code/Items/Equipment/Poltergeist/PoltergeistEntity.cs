@@ -2,27 +2,37 @@ using Sandbox;
 
 namespace TTT;
 
-[ClassName( "ttt_entity_poltergeist" )]
-[HideInEditor]
-public partial class PoltergeistEntity : ModelEntity
+public sealed partial class PoltergeistEntity : Component
 {
-	private static readonly Model _worldModel = Model.Load( "models/poltergeist/poltergeist_attachment.vmdl" );
+	[RequireComponent] private ModelRenderer _renderer { get; set; }
+
 	private const int BounceForce = 950;
 	private const int MaxBounces = 5;
 	private int _bounces = 0;
 	private TimeUntil _timeUntilNextBounce = 0f;
 
-	public override void Spawn()
+	protected override void OnStart()
 	{
-		Model = _worldModel;
-		SetupPhysicsFromModel( PhysicsMotionType.Dynamic );
+		_renderer.Model = Model.Load( "models/poltergeist/poltergeist_attachment.vmdl" );
 	}
 
-	[GameEvent.Tick.Server]
-	private void OnServerTick()
+	public void AttachTo( GameObject parent )
 	{
+		if ( parent is not null )
+			GameObject.Parent = parent;
+	}
+
+	[GameEvent.Tick]
+	private void OnTick()
+	{
+		if ( !Networking.IsHost )
+			return;
+
 		if ( _bounces >= MaxBounces )
-			Delete();
+		{
+			GameObject.Destroy();
+			return;
+		}
 
 		if ( _timeUntilNextBounce )
 			Bounce();
@@ -30,12 +40,11 @@ public partial class PoltergeistEntity : ModelEntity
 
 	private void Bounce()
 	{
-		// TODO: How about we do a Radius check for any players, then send the object flying
-		// in the direction of the player?
-		if ( Parent.IsValid() )
+		var parentRb = GameObject.Parent?.Components.Get<Rigidbody>();
+		if ( parentRb is not null )
 		{
 			var randDirection = Game.Random.Float( -BounceForce, BounceForce );
-			Parent.Velocity = new Vector3( randDirection, randDirection, randDirection );
+			parentRb.PhysicsBody.Velocity = new Vector3( randDirection, randDirection, randDirection );
 		}
 
 		_bounces += 1;

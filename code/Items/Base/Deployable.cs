@@ -4,9 +4,10 @@ using System.Collections.Generic;
 
 namespace TTT;
 
-public abstract class Deployable<T> : Carriable where T : ModelEntity, new()
+public abstract class Deployable : Carriable
 {
-	public GhostEntity GhostEntity { get; private set; }
+	private GhostEntity _ghostEntity;
+	private ModelRenderer _ghostRenderer;
 
 	public override List<UI.BindingPrompt> BindingPrompts => new()
 	{
@@ -21,109 +22,107 @@ public abstract class Deployable<T> : Carriable where T : ModelEntity, new()
 	{
 		base.ActiveStart( player );
 
-		EnableDrawing = false;
+		WorldRenderer.Enabled = false;
 
 		if ( !CanPlant )
 			return;
 
-		GhostEntity = new();
-		GhostEntity.SetEntity( this );
+		var ghostGo = new GameObject( true, "GhostEntity" );
+		ghostGo.Components.Create<ModelRenderer>();
+		_ghostEntity = ghostGo.Components.Create<GhostEntity>();
+		_ghostEntity.SetEntity( WorldRenderer );
+		_ghostRenderer = ghostGo.Components.Get<ModelRenderer>( FindMode.InSelf );
 	}
 
 	public override void ActiveEnd( Player player, bool dropped )
 	{
 		base.ActiveEnd( player, dropped );
 
-		GhostEntity?.Delete();
+		_ghostEntity?.GameObject.Destroy();
+		_ghostEntity = null;
+		_ghostRenderer = null;
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
 		if ( CanDrop && Input.Pressed( InputAction.PrimaryAttack ) )
 		{
-			OnDeploy( Owner.Inventory.DropEntity( this ) );
+			Owner.Inventory.Drop( this );
+			OnDeploy();
 			return;
 		}
 
 		if ( !CanPlant || !Input.Pressed( InputAction.SecondaryAttack ) )
 			return;
 
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
+		var trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
 			.StaticOnly()
 			.Run();
 
-		if ( !trace.Hit )
+		if ( !trace.Hit || _ghostEntity is null )
 			return;
 
-		GhostEntity.Position = trace.EndPosition;
-		GhostEntity.Rotation = Rotation.From( trace.Normal.EulerAngles );
-
-		if ( Math.Abs( trace.Normal.z ) >= 0.99f )
-		{
-			GhostEntity.Rotation = Rotation.From
-			(
-				Rotation.Angles()
-				.WithYaw( Owner.EyeRotation.Yaw() )
-				.WithPitch( -90 * trace.Normal.z.CeilToInt() )
-				.WithRoll( 180f )
-			);
-		}
-
-		var valid = GhostEntity.IsPlacementValid( ref trace );
-
-		if ( !valid )
+		if ( !_ghostEntity.IsPlacementValid( ref trace ) )
 			return;
 
-		var dropped = Owner.Inventory.DropEntity( this );
-		dropped.PhysicsEnabled = false;
-		dropped.Transform = GhostEntity.Transform;
-		dropped.Velocity = 0;
+		Owner.Inventory.Drop( this );
 
-		OnDeploy( dropped );
+		var rb = Components.Get<Rigidbody>( FindMode.InSelf );
+		if ( rb is not null )
+			rb.Enabled = false;
+
+		GameObject.WorldPosition = trace.EndPosition;
+		GameObject.WorldRotation = GetPlacementRotation( trace );
+
+		OnDeploy();
 	}
 
-	public override void FrameSimulate( IClient client )
+	public override void FrameSimulate( Player player )
 	{
-		base.FrameSimulate( client );
+		base.FrameSimulate( player );
 
-		if ( !GhostEntity.IsValid() )
+		if ( _ghostEntity is null || _ghostRenderer is null )
 			return;
 
-		var trace = Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
+		var trace = Scene.Trace.Ray( Owner.EyePosition, Owner.EyePosition + Owner.EyeRotation.Forward * Player.UseDistance )
 			.StaticOnly()
 			.Run();
 
 		if ( !trace.Hit )
 		{
-			GhostEntity.EnableDrawing = false;
+			_ghostRenderer.Enabled = false;
 			return;
 		}
 
-		GhostEntity.EnableDrawing = true;
-		GhostEntity.Position = trace.EndPosition;
-		GhostEntity.Rotation = Rotation.From( trace.Normal.EulerAngles );
+		_ghostRenderer.Enabled = true;
+		_ghostEntity.GameObject.WorldPosition = trace.EndPosition;
+		_ghostEntity.GameObject.WorldRotation = GetPlacementRotation( trace );
+
+		if ( _ghostEntity.IsPlacementValid( ref trace ) )
+			_ghostEntity.ShowValid();
+		else
+			_ghostEntity.ShowInvalid();
+	}
+
+	private static Rotation GetPlacementRotation( SceneTraceResult trace )
+	{
+		var rot = Rotation.From( trace.Normal.EulerAngles );
 
 		if ( Math.Abs( trace.Normal.z ) >= 0.99f )
 		{
-			GhostEntity.Rotation = Rotation.From
-			(
-				Rotation.Angles()
-				.WithYaw( Owner.EyeRotation.Yaw() )
+			rot = Rotation.From(
+				rot.Angles()
+				.WithYaw( 0f )
 				.WithPitch( -90 * trace.Normal.z.CeilToInt() )
 				.WithRoll( 180f )
 			);
 		}
 
-		var valid = GhostEntity.IsPlacementValid( ref trace );
-
-		if ( valid )
-			GhostEntity.ShowValid();
-		else
-			GhostEntity.ShowInvalid();
+		return rot;
 	}
 
-	protected virtual void OnDeploy( T entity ) { }
+	protected virtual void OnDeploy() { }
 }

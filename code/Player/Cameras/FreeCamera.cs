@@ -6,13 +6,15 @@ public class FreeCamera : CameraMode
 {
 	private const int BaseMoveSpeed = 300;
 	private float _moveSpeed = 1f;
-	private Angles _lookAngles = Camera.Rotation.Angles();
+	private Angles _lookAngles;
+	private Vector3 _position;
 	private Vector3 _moveInput;
 
 	public FreeCamera()
 	{
 		Spectating.Player = null;
-		Camera.FirstPersonViewer = null;
+		_position = Game.ActiveScene?.Camera?.WorldPosition ?? Vector3.Zero;
+		_lookAngles = Game.ActiveScene?.Camera?.WorldRotation.Angles() ?? new Angles();
 	}
 
 	public override void BuildInput()
@@ -29,32 +31,37 @@ public class FreeCamera : CameraMode
 		{
 			var alivePlayer = Game.Random.FromList( Utils.GetPlayersWhere( p => p.IsAlive ) );
 			if ( alivePlayer.IsValid() )
-				Current = new FollowEntityCamera( alivePlayer );
+				Current = new FollowEntityCamera( alivePlayer.GameObject );
 		}
 
 		if ( Input.Pressed( InputAction.Use ) )
-			FindSpectateTarget( (Player)Game.LocalPawn );
+			FindSpectateTarget();
 
 		_moveInput = Input.AnalogMove;
 		_lookAngles += Input.AnalogLook;
 	}
 
-	public override void FrameSimulate( IClient client )
+	public override void FrameSimulate()
 	{
-		var mv = _moveInput.Normal * BaseMoveSpeed * RealTime.Delta * Camera.Rotation * _moveSpeed;
+		var rotation = Rotation.From( _lookAngles );
+		var mv = _moveInput.Normal * BaseMoveSpeed * RealTime.Delta * rotation * _moveSpeed;
+		_position += mv;
 
-		if ( Camera.Rotation.Roll() > 90f || Camera.Rotation.Roll() < -90f )
-			_lookAngles.pitch = _lookAngles.pitch.Clamp( -90f, 90f );
+		var cam = Game.ActiveScene?.Camera;
+		if ( cam is null )
+			return;
 
-		Camera.Position += mv;
-		Camera.Rotation = Rotation.From( _lookAngles );
+		cam.WorldPosition = _position;
+		cam.WorldRotation = rotation;
 	}
 
-	private void FindSpectateTarget( Player player )
+	private void FindSpectateTarget()
 	{
-		if ( player.HoveredEntity is Prop prop && prop.PhysicsBody is not null )
-			Player.Possess( prop.NetworkIdent );
-		else if ( player.HoveredEntity is Player hoveredPlayer )
+		var player = Player.Local;
+		if ( player is null )
+			return;
+
+		if ( player.HoveredCarriable is null && player.HoveredPlayer is Player hoveredPlayer )
 			Current = new FirstPersonCamera( hoveredPlayer );
 	}
 }

@@ -11,27 +11,29 @@ public partial class Player
 
 	public void ClearButtons()
 	{
-		Game.AssertClient();
-
-		foreach ( var logicButtonPoint in RoleButtonMarkers )
-		{
-			logicButtonPoint.Delete( true );
-		}
+		foreach ( var marker in RoleButtonMarkers )
+			marker.Delete( true );
 
 		RoleButtons.Clear();
 		RoleButtonMarkers.Clear();
 		FocusedButton = null;
 	}
 
-	[ConCmd.Server]
-	public static void ActivateRoleButton( int networkIdent )
+	[ConCmd( "ttt_activate_role_button" )]
+	public static void ActivateRoleButtonCmd( int goId )
 	{
-		if ( ConsoleSystem.Caller.Pawn is not Player player )
+		if ( !Networking.IsHost )
 			return;
 
-		var entity = FindByIndex( networkIdent );
+		var player = GameManager.Instance?.FindPlayerByConnection( Rpc.Caller );
+		if ( player is null )
+			return;
 
-		if ( entity is not RoleButton button )
+		// Find the role button by GameObject network ID
+		var button = Game.ActiveScene?.GetAllComponents<RoleButton>()
+			.FirstOrDefault( b => b.GameObject.Id.GetHashCode() == goId );
+
+		if ( button is null )
 			return;
 
 		if ( button.CanUse( player ) )
@@ -40,11 +42,9 @@ public partial class Player
 
 	public void ActivateRoleButton()
 	{
-		Game.AssertClient();
-
 		if ( FocusedButton is null || !Input.Pressed( InputAction.Use ) )
 			return;
 
-		ActivateRoleButton( FocusedButton.NetworkIdent );
+		ActivateRoleButtonCmd( FocusedButton.GameObject.Id.GetHashCode() );
 	}
 }

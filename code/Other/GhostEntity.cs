@@ -1,47 +1,54 @@
 using Sandbox;
-using System.Linq;
 
 namespace TTT;
 
-public class GhostEntity : ModelEntity
+/// <summary>
+/// A translucent ghost of a model used for placement preview.
+/// </summary>
+public sealed class GhostEntity : Component
 {
-	public ModelEntity RealEntity { get; set; }
+	public ModelRenderer Renderer { get; private set; }
 
-	public override void Spawn()
+	protected override void OnStart()
 	{
-		base.Spawn();
-
-		EnableTouch = true;
-		EnableShadowCasting = false;
-		EnableSolidCollisions = false;
-		Transmit = TransmitType.Never;
-
+		Renderer = Components.Get<ModelRenderer>( FindMode.InSelf );
 		Tags.Add( "interactable" );
 	}
 
-	public void SetEntity( ModelEntity entity )
+	public void SetEntity( ModelRenderer source )
 	{
-		RealEntity = entity;
-		Model = entity.Model;
-		RenderColor = RenderColor.WithAlpha( 0.5f );
+		Renderer ??= Components.Get<ModelRenderer>( FindMode.InSelf );
+		if ( Renderer is not null )
+		{
+			Renderer.Model = source.Model;
+			Renderer.Tint = Renderer.Tint.WithAlpha( 0.5f );
+		}
 	}
 
 	public void ShowValid()
 	{
-		RenderColor = Color.Green.WithAlpha( 0.5f );
+		if ( Renderer is not null )
+			Renderer.Tint = Color.Green.WithAlpha( 0.5f );
 	}
 
 	public void ShowInvalid()
 	{
-		RenderColor = Color.Red.WithAlpha( 0.5f );
+		if ( Renderer is not null )
+			Renderer.Tint = Color.Red.WithAlpha( 0.5f );
 	}
 
-	public bool IsPlacementValid( ref TraceResult trace )
+	public bool IsPlacementValid( ref SceneTraceResult trace )
 	{
 		var position = trace.EndPosition;
-		var bounds = CollisionBounds;
-		var entities = Entity.FindInBox( bounds + position );
+		var bounds = Renderer?.Model?.PhysicsBounds ?? BBox.FromPositionAndSize( position, 16f );
+		bounds = bounds.Translate( position );
 
-		return !entities.Any();
+		// Check for overlapping scene objects
+		var hit = Scene.Trace.Box( bounds, position, position )
+			.WithAnyTags( "solid" )
+			.IgnoreGameObject( GameObject )
+			.Run();
+
+		return !hit.Hit;
 	}
 }

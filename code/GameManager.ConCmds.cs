@@ -5,29 +5,40 @@ namespace TTT;
 
 public partial class GameManager
 {
-	[ConCmd.Server( Name = "ttt_respawn", Help = "Respawns the current player or the player with the given id" )]
+	[ConCmd( "ttt_respawn" )]
 	public static void RespawnPlayer( int id = 0 )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
 			return;
 
-		var player = id == 0 ? ConsoleSystem.Caller.Pawn as Player : FindByIndex( id ) as Player;
+		if ( !HasAdminAccess( Rpc.Caller ) )
+			return;
+
+		Player player;
+		if ( id == 0 )
+			player = Instance?.FindPlayerByConnection( Rpc.Caller );
+		else
+			player = Utils.GetPlayersWhere( p => p.SteamId == (ulong)id ).FirstOrDefault();
+
 		if ( !player.IsValid() )
 			return;
 
 		player.Respawn();
 	}
 
-	[ConCmd.Server( Name = "ttt_giveitem" )]
+	[ConCmd( "ttt_giveitem" )]
 	public static void GiveItem( string itemName )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
+			return;
+
+		if ( !HasAdminAccess( Rpc.Caller ) )
 			return;
 
 		if ( itemName.IsNullOrEmpty() )
 			return;
 
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		var player = Instance?.FindPlayerByConnection( Rpc.Caller );
 		if ( !player.IsValid() )
 			return;
 
@@ -44,42 +55,51 @@ public partial class GameManager
 			player.Perks.Add( TypeLibrary.Create<Perk>( itemInfo.ClassName ) );
 	}
 
-	[ConCmd.Server( Name = "ttt_givecredits" )]
+	[ConCmd( "ttt_givecredits" )]
 	public static void GiveCredits( int credits )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
 			return;
 
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		if ( !HasAdminAccess( Rpc.Caller ) )
+			return;
+
+		var player = Instance?.FindPlayerByConnection( Rpc.Caller );
 		if ( !player.IsValid() )
 			return;
 
 		player.Credits += credits;
 	}
 
-	[ConCmd.Server( Name = "ttt_givedamage" )]
+	[ConCmd( "ttt_givedamage" )]
 	public static void GiveDamage( float damage )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
 			return;
 
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		if ( !HasAdminAccess( Rpc.Caller ) )
+			return;
+
+		var player = Instance?.FindPlayerByConnection( Rpc.Caller );
 		if ( !player.IsValid() )
 			return;
 
 		player.TakeDamage( DamageInfo.Generic( damage ) );
 	}
 
-	[ConCmd.Server( Name = "ttt_setrole" )]
+	[ConCmd( "ttt_setrole" )]
 	public static void SetRole( string roleName )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( GameManager.Current.State is not InProgress )
+		if ( !HasAdminAccess( Rpc.Caller ) )
 			return;
 
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		if ( Instance?.State is not InProgress )
+			return;
+
+		var player = Instance?.FindPlayerByConnection( Rpc.Caller );
 		if ( !player.IsValid() )
 			return;
 
@@ -93,13 +113,21 @@ public partial class GameManager
 		player.SetRole( roleInfo );
 	}
 
-	[ConCmd.Server( Name = "ttt_setkarma", Help = "Sets karma for yourself or the player with the given entity id." )]
-	public static void SetKarma( int karma, int id = 0 )
+	[ConCmd( "ttt_setkarma" )]
+	public static void SetKarma( int karma, ulong steamId = 0 )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
 			return;
 
-		var player = id == 0 ? ConsoleSystem.Caller.Pawn as Player : FindByIndex( id ) as Player;
+		if ( !HasAdminAccess( Rpc.Caller ) )
+			return;
+
+		Player player;
+		if ( steamId == 0 )
+			player = Instance?.FindPlayerByConnection( Rpc.Caller );
+		else
+			player = Utils.GetPlayersWhere( p => p.SteamId == steamId ).FirstOrDefault();
+
 		if ( !player.IsValid() )
 			return;
 
@@ -108,19 +136,25 @@ public partial class GameManager
 		Karma.ApplyRoundModifiers( player );
 	}
 
-	[ConCmd.Server( Name = "ttt_force_restart" )]
+	[ConCmd( "ttt_force_restart" )]
 	public static void ForceRestart()
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
 			return;
 
-		GameManager.Current.ChangeState( new PreRound() );
+		if ( !HasAdminAccess( Rpc.Caller ) )
+			return;
+
+		Instance?.ChangeState( new PreRound() );
 	}
 
-	[ConCmd.Server( Name = "ttt_change_map" )]
+	[ConCmd( "ttt_change_map" )]
 	public static async void ChangeMap( string mapIdent )
 	{
-		if ( !GameManager.HasAdminAccess( ConsoleSystem.Caller ) )
+		if ( !Networking.IsHost )
+			return;
+
+		if ( !HasAdminAccess( Rpc.Caller ) )
 			return;
 
 		var package = await Package.Fetch( mapIdent, true );
@@ -130,26 +164,35 @@ public partial class GameManager
 			Log.Error( $"{mapIdent} does not exist as a s&box map!" );
 	}
 
-	[ConCmd.Server( Name = "ttt_rtv" )]
+	[ConCmd( "ttt_rtv" )]
 	public static void RockTheVote()
 	{
-		var client = ConsoleSystem.Caller;
-		if ( !client.IsValid() )
+		if ( !Networking.IsHost )
 			return;
 
-		if ( client.HasRockedTheVote() )
+		var caller = Rpc.Caller;
+		if ( caller is null )
 			return;
 
-		client.SetValue( "!rtv", true );
-		GameManager.Current.RTVCount += 1;
+		if ( caller.HasRockedTheVote() )
+			return;
 
-		UI.TextChat.AddInfoEntry( To.Everyone, $"{client.Name} has rocked the vote! ({GameManager.Current.RTVCount}/{MathF.Round( Game.Clients.Count * GameManager.RTVThreshold )})" );
+		caller.SetValue( "!rtv", true );
+
+		if ( Instance is null )
+			return;
+
+		Instance.RTVCount += 1;
+		UI.TextChat.AddInfoEntry( $"{caller.DisplayName} has rocked the vote! ({Instance.RTVCount}/{MathF.Round( Connection.All.Count * RTVThreshold )})" );
 	}
 
-	[ConCmd.Server( Name = "kill" )]
-	public static void Kill()
+	[ConCmd( "kill" )]
+	public static void KillSelf()
 	{
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		if ( !Networking.IsHost )
+			return;
+
+		var player = Instance?.FindPlayerByConnection( Rpc.Caller );
 		if ( !player.IsValid() )
 			return;
 

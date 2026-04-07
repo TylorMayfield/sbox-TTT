@@ -1,12 +1,12 @@
 using Sandbox;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TTT;
 
 /// <summary>
-/// A subset of <see cref="Entity.Children"/> that contains entities 
-/// of type <see cref="Carriable"/>.
+/// Manages the carriables held by a player.
 /// </summary>
 public sealed class Inventory : IEnumerable<Carriable>
 {
@@ -45,7 +45,8 @@ public sealed class Inventory : IEnumerable<Carriable>
 
 	public bool Add( Carriable carriable, bool makeActive = false )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return false;
 
 		if ( !carriable.IsValid() )
 			return false;
@@ -56,7 +57,14 @@ public sealed class Inventory : IEnumerable<Carriable>
 		if ( !CanAdd( carriable ) )
 			return false;
 
-		carriable.SetParent( Owner, true );
+		carriable.GameObject.Parent = Owner.GameObject;
+		carriable.OnCarryStart( Owner );
+		_list.Add( carriable );
+
+		_slotCapacity[carriable.Info.Slot] -= 1;
+
+		if ( carriable is Weapon weapon )
+			_hasAmmoType[weapon.Info.AmmoType] = true;
 
 		if ( makeActive )
 			SetActive( carriable );
@@ -66,9 +74,6 @@ public sealed class Inventory : IEnumerable<Carriable>
 
 	public bool CanAdd( Carriable carriable )
 	{
-		if ( Game.IsClient )
-			return carriable.Parent == Owner;
-
 		if ( !HasFreeSlot( carriable.Info.Slot ) )
 			return false;
 
@@ -78,15 +83,15 @@ public sealed class Inventory : IEnumerable<Carriable>
 		return true;
 	}
 
-	public bool Contains( Carriable entity )
+	public bool Contains( Carriable carriable )
 	{
-		return _list.Contains( entity );
+		return _list.Contains( carriable );
 	}
 
 	public void Pickup( Carriable carriable )
 	{
 		if ( Add( carriable ) )
-			Sound.FromEntity( "pickup_weapon", Owner );
+			Sound.Play( "pickup_weapon", Owner.WorldPosition );
 	}
 
 	public bool HasFreeSlot( SlotType slotType )
@@ -101,7 +106,8 @@ public sealed class Inventory : IEnumerable<Carriable>
 
 	public void OnUse( Carriable carriable )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		if ( !carriable.CanCarry( Owner ) )
 			return;
@@ -112,16 +118,16 @@ public sealed class Inventory : IEnumerable<Carriable>
 			return;
 		}
 
-		var entities = _list.FindAll( x => x.Info.Slot == carriable.Info.Slot );
+		var sameSlot = _list.FindAll( x => x.Info.Slot == carriable.Info.Slot );
 
 		if ( Active is not null && Active.Info.Slot == carriable.Info.Slot )
 		{
 			if ( DropActive() is not null )
 				Add( carriable, true );
 		}
-		else if ( entities.Count == 1 )
+		else if ( sameSlot.Count == 1 )
 		{
-			if ( Drop( entities[0] ) )
+			if ( Drop( sameSlot[0] ) )
 				Add( carriable, false );
 		}
 	}
@@ -135,7 +141,6 @@ public sealed class Inventory : IEnumerable<Carriable>
 			return false;
 
 		Active = carriable;
-
 		return true;
 	}
 
@@ -143,10 +148,8 @@ public sealed class Inventory : IEnumerable<Carriable>
 	{
 		foreach ( var carriable in _list )
 		{
-			if ( carriable is not T t || t.Equals( default( T ) ) )
-				continue;
-
-			return t;
+			if ( carriable is T t )
+				return t;
 		}
 
 		return null;
@@ -154,7 +157,7 @@ public sealed class Inventory : IEnumerable<Carriable>
 
 	public bool Drop( Carriable carriable )
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return false;
 
 		if ( !Contains( carriable ) )
@@ -163,21 +166,26 @@ public sealed class Inventory : IEnumerable<Carriable>
 		if ( !carriable.Info.CanDrop )
 			return false;
 
-		carriable.Parent = null;
+		_list.Remove( carriable );
+		carriable.OnCarryDrop( Owner );
+
+		_slotCapacity[carriable.Info.Slot] += 1;
+
+		if ( carriable is Weapon weapon )
+			_hasAmmoType[weapon.Info.AmmoType] = false;
 
 		return true;
 	}
 
 	public Carriable DropActive()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return null;
 
 		if ( Drop( Active ) )
 		{
 			var active = Active;
 			Active = null;
-
 			return active;
 		}
 
@@ -186,86 +194,27 @@ public sealed class Inventory : IEnumerable<Carriable>
 
 	public void DropAll()
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		foreach ( var carriable in _list.ToArray() )
 			Drop( carriable );
 
 		Active = null;
-
-		DeleteContents();
 	}
 
 	public void DeleteContents()
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		foreach ( var carriable in _list.ToArray() )
-			carriable.Delete();
+			carriable.GameObject.Destroy();
 
 		Active = null;
-
 		_list.Clear();
 	}
 
-	public void OnChildAdded( Carriable carriable )
-	{
-		if ( !CanAdd( carriable ) )
-			return;
-
-		if ( _list.Contains( carriable ) )
-			throw new System.Exception( "Trying to add to inventory multiple times. This is gated by Entity:OnChildAdded and should never happen!" );
-
-		_list.Add( carriable );
-
-		carriable.OnCarryStart( Owner );
-
-		_slotCapacity[carriable.Info.Slot] -= 1;
-
-		if ( carriable is Weapon weapon )
-			_hasAmmoType[weapon.Info.AmmoType] = true;
-	}
-
-	public void OnChildRemoved( Carriable carriable )
-	{
-		if ( !_list.Remove( carriable ) )
-			return;
-
-		carriable.OnCarryDrop( Owner );
-
-		_slotCapacity[carriable.Info.Slot] += 1;
-
-		if ( carriable is Weapon weapon )
-			_hasAmmoType[weapon.Info.AmmoType] = false;
-	}
-
-	public T DropEntity<T>( Deployable<T> self ) where T : ModelEntity, new()
-	{
-		Game.AssertServer();
-
-		var carriable = self as Carriable;
-		if ( !carriable.IsValid() || !Contains( carriable ) )
-			return null;
-
-		carriable.Parent = null;
-		carriable.Delete();
-
-		var droppedEntity = new T
-		{
-			Owner = Owner,
-			Position = Owner.EyePosition,
-			Rotation = Owner.EyeRotation,
-			Velocity = Owner.GetDropVelocity( false ),
-			PhysicsEnabled = true,
-		};
-
-		droppedEntity.Tags.Add( "interactable" );
-		droppedEntity.Tags.Remove( "solid" );
-
-		return droppedEntity;
-	}
-
 	public IEnumerator<Carriable> GetEnumerator() => _list.GetEnumerator();
-
 	IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

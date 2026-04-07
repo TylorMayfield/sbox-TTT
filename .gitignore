@@ -31,3 +31,4 @@ models/**/*.png
 .vscode
 */.vs/*
 *.csproj
+/.sbox

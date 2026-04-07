@@ -81,9 +81,7 @@ public static class Draw
 			var endRadians = currentAngle + angleStep;
 
 			if ( endRadians > endAngle )
-			{
 				endRadians = endAngle;
-			}
 
 			startRadians += MathF.PI;
 			endRadians += MathF.PI;

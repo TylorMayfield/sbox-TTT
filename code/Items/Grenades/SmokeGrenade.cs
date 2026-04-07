@@ -6,7 +6,6 @@ namespace TTT;
 [Category( "Grenades" )]
 [ClassName( "ttt_grenade_smoke" )]
 [EditorModel( "models/weapons/w_smoke.vmdl" )]
-[HammerEntity]
 [Title( "Smoke Grenade" )]
 public class SmokeGrenade : Grenade
 {
@@ -17,12 +16,7 @@ public class SmokeGrenade : Grenade
 	{
 		base.OnExplode();
 
-		Particles.Create( Particle, Position );
-		Sound.FromWorld( ExplodeSound, Position );
-	}
-
-	static SmokeGrenade()
-	{
-		Precache.Add( Particle );
+		SceneParticles.PlayInstant( Scene, Particle, new Transform( WorldPosition ) );
+		Sound.Play( ExplodeSound, WorldPosition );
 	}
 }

@@ -1,4 +1,5 @@
 using Sandbox;
+using System.Linq;
 
 namespace TTT;
 
@@ -6,22 +7,31 @@ public static class MapHandler
 {
 	public static int WeaponCount = 0;
 
-	[GameEvent.Entity.PostSpawn]
-	public static void EntityPostSpawn()
+	public static void CountMapWeapons()
 	{
-		if ( Game.IsClient )
+		if ( !Networking.IsHost )
 			return;
 
-		foreach ( var ent in Entity.All )
+		WeaponCount = 0;
+
+		foreach ( var go in Game.ActiveScene.GetAllObjects( true ) )
 		{
-			if ( ent is Weapon || ent is Ammo || ent is RandomWeapon )
+			if ( go.Components.TryGet<Weapon>( out _ ) || go.Components.TryGet<Ammo>( out _ ) )
 				WeaponCount += 1;
 		}
 	}
 
 	public static void Cleanup()
 	{
-		Game.ResetMap( System.Array.Empty<Entity>() );
-		Decal.Clear( true, true );
+		foreach ( var go in Game.ActiveScene.GetAllObjects( true ).ToList() )
+		{
+			if ( go.Tags.Has( "map" ) || go == Game.ActiveScene.Directory.Root )
+				continue;
+
+			if ( go.Tags.Has( "player" ) || go.Tags.Has( "manager" ) )
+				continue;
+
+			go.Destroy();
+		}
 	}
 }

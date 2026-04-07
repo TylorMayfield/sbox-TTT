@@ -13,8 +13,7 @@ public abstract partial class Grenade : Carriable
 		Underhand
 	}
 
-	[Net, Predicted]
-	private TimeUntil TimeUntilExplode { get; set; }
+	private TimeUntil _timeUntilExplode;
 
 	public override List<UI.BindingPrompt> BindingPrompts => new()
 	{
@@ -25,13 +24,14 @@ public abstract partial class Grenade : Carriable
 	protected virtual float SecondsUntilExplode => 3f;
 	private ThrowType _throw = ThrowType.None;
 	private bool _isThrown = false;
+	private Player _previousOwner;
 
 	public override bool CanCarry( Player carrier )
 	{
 		return !_isThrown && base.CanCarry( carrier );
 	}
 
-	public override void Simulate( IClient client )
+	public override void Simulate( Player player )
 	{
 		if ( _throw == ThrowType.None )
 		{
@@ -42,14 +42,14 @@ public abstract partial class Grenade : Carriable
 
 			if ( _throw != ThrowType.None )
 			{
-				ViewModelEntity?.SetAnimParameter( "fire", true );
-				TimeUntilExplode = SecondsUntilExplode;
+				ViewModelRenderer?.Set( "fire", true );
+				_timeUntilExplode = SecondsUntilExplode;
 			}
 
 			return;
 		}
 
-		if ( TimeUntilExplode || Input.Released( InputAction.PrimaryAttack ) || Input.Released( InputAction.SecondaryAttack ) )
+		if ( _timeUntilExplode || Input.Released( InputAction.PrimaryAttack ) || Input.Released( InputAction.SecondaryAttack ) )
 			Throw();
 	}
 
@@ -57,25 +57,27 @@ public abstract partial class Grenade : Carriable
 
 	protected void Throw()
 	{
-		if ( !Game.IsServer )
+		if ( !Networking.IsHost )
 			return;
 
-		using ( Prediction.Off() )
-		{
-			Owner.Inventory.DropActive();
+		_previousOwner = Owner;
+		Owner.Inventory.DropActive();
 
-			var forwards = PreviousOwner.EyeRotation.Forward;
-			forwards *= _throw == ThrowType.Overhand ? 800f : 300f;
+		var forwards = _previousOwner.EyeRotation.Forward;
+		forwards *= _throw == ThrowType.Overhand ? 800f : 300f;
 
-			var upwards = PreviousOwner.EyeRotation.Up * 200f;
+		var upwards = _previousOwner.EyeRotation.Up * 200f;
+		var throwVelocity = _previousOwner.CharController.Velocity + forwards + upwards;
 
-			Velocity = PreviousOwner.Velocity + forwards + upwards;
-			Position = PreviousOwner.EyePosition + PreviousOwner.EyeRotation.Forward * 3.0f + Vector3.Down * 10f;
+		GameObject.WorldPosition = _previousOwner.EyePosition + _previousOwner.EyeRotation.Forward * 3.0f + Vector3.Down * 10f;
 
-			_isThrown = true;
+		var rb = Components.Get<Rigidbody>( FindMode.InSelf );
+		if ( rb is not null )
+			rb.Velocity = throwVelocity;
 
-			_ = ExplodeIn( TimeUntilExplode );
-		}
+		_isThrown = true;
+
+		_ = ExplodeIn( _timeUntilExplode );
 	}
 
 	private async Task ExplodeIn( float seconds )
@@ -83,6 +85,6 @@ public abstract partial class Grenade : Carriable
 		await GameTask.DelaySeconds( seconds );
 
 		OnExplode();
-		Delete();
+		GameObject.Destroy();
 	}
 }

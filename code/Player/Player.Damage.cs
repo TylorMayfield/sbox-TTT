@@ -9,112 +9,81 @@ public partial class Player
 {
 	public const float MaxHealth = 100f;
 
-	[Net]
-	public TimeSince TimeSinceDeath { get; private set; }
+	[Sync] public TimeSince TimeSinceDeath { get; private set; }
 
 	/// <summary>
-	/// It's always better to use this than <see cref="Entity.LastAttackerWeapon"/>
-	/// because the weapon may be invalid.
+	/// Better to use this than LastAttackerWeapon because the weapon may be invalid.
 	/// </summary>
 	public CarriableInfo LastAttackerWeaponInfo { get; private set; }
 
 	public DamageInfo LastDamage { get; private set; }
 
-	public new float Health
+	private float _health;
+	public float Health
 	{
-		get => base.Health;
-		set => base.Health = Math.Clamp( value, 0, MaxHealth );
+		get => _health;
+		set => _health = Math.Clamp( value, 0, MaxHealth );
 	}
 
-	public new Entity LastAttacker
-	{
-		get => base.LastAttacker;
-		set
-		{
-			// If anyone uses a prop to kill someone.
-			if ( value is Prop prop && prop.LastAttacker is Player propAttacker )
-				base.LastAttacker = propAttacker;
-			else
-				base.LastAttacker = value;
-		}
-	}
+	public GameObject LastAttacker { get; set; }
+	public Component LastAttackerWeapon { get; set; }
 
 	/// <summary>
-	/// Whether or not they were killed by another Player.
-	/// This includes if the Player used a prop to kill them.
+	/// Whether killed by another Player (including via props).
 	/// </summary>
-	public bool KilledByPlayer => LastAttacker is Player && LastAttacker != this;
-	/// <summary>
-	/// The base/start karma is determined once per round and determines the player's
-	/// damage factor. It is networked and shown on clients.
-	/// </summary>
-	[Net]
-	public float BaseKarma { get; set; }
-	/// <summary>
-	/// The damage factor scales how much damage the player deals, so if it is 0.9
-	/// then the player only deals 90% of his original damage.
-	/// </summary>
-	[Net]
-	public float DamageFactor { get; set; } = 1f;
-	[Net]
-	public float KarmaSpeedScale { get; set; } = 1f;
-	[Net]
-	public float RdmDamageScale { get; set; } = 1f;
-	/// <summary>
-	/// If a player damages another team member that is "clean" (no active timer),
-	/// they'll end up with time being tacked onto this timer. A player will receive a
-	/// karma bonus for remaining "clean" (having no active timer) at the end of the round.
-	/// </summary>
+	public bool KilledByPlayer => LastAttacker?.Components.TryGet<Player>( out var p ) == true && p != this;
+
+	[Sync] public float BaseKarma { get; set; }
+	[Sync] public float DamageFactor { get; set; } = 1f;
+	[Sync] public float KarmaSpeedScale { get; set; } = 1f;
+	[Sync] public float RdmDamageScale { get; set; } = 1f;
 	public TimeUntil TimeUntilClean { get; set; } = 0f;
-	/// <summary>
-	/// The active karma starts equal to the base karma, but is updated as the
-	/// player damages/kills others. When a player damages/kills another, the
-	/// active karma is used to determine his karma penalty.
-	/// </summary>
 	public float ActiveKarma { get; set; }
 
-	public override void OnKilled()
+	public void Kill()
 	{
-		Game.AssertServer();
+		TakeDamage( DamageInfo.Generic( float.MaxValue ).WithAttacker( this ) );
+	}
 
-		LifeState = LifeState.Dead;
+	public void OnKilled()
+	{
+		if ( !Networking.IsHost )
+			return;
+
 		Status = PlayerStatus.MissingInAction;
 		TimeSinceDeath = 0;
 
-		if ( KilledByPlayer )
-			((Player)LastAttacker).PlayersKilled.Add( this );
+		if ( KilledByPlayer && LastAttacker?.Components.TryGet<Player>( out var attacker ) == true )
+			attacker.PlayersKilled.Add( this );
 
 		Corpse = new Corpse( this );
-		RemoveAllDecals();
 		StopUsing();
 
-		EnableAllCollisions = false;
-		EnableDrawing = false;
-		EnableTouch = false;
+		CharController.Enabled = false;
+		Renderer.Enabled = false;
 
 		Inventory.DropAll();
 		DeleteFlashlight();
 		DeleteItems();
 
 		if ( !LastDamage.IsSilent() )
-			PlaySound( "player_death" );
+			Sound.Play( "player_death", WorldPosition );
 
 		Event.Run( TTTEvent.Player.Killed, this );
-		GameManager.Current.State.OnPlayerKilled( this );
+		GameManager.Instance.State.OnPlayerKilled( this );
 
-		ClientOnKilled( this );
+		BroadcastOnKilled();
 	}
 
-	private void ClientOnKilled()
+	[Broadcast]
+	private void BroadcastOnKilled()
 	{
-		Game.AssertClient();
-
-		if ( IsLocalPawn )
+		if ( !IsProxy )
 		{
 			CurrentChannel = Channel.Spectator;
 
 			if ( Corpse.IsValid() )
-				CameraMode.Current = new FollowEntityCamera( Corpse );
+				CameraMode.Current = new FollowEntityCamera( Corpse.GameObject );
 
 			ClearButtons();
 		}
@@ -123,30 +92,31 @@ public partial class Player
 		Event.Run( TTTEvent.Player.Killed, this );
 	}
 
-	public override void TakeDamage( DamageInfo info )
+	public void TakeDamage( DamageInfo info )
 	{
-		Game.AssertServer();
+		if ( !Networking.IsHost )
+			return;
 
 		if ( !IsAlive )
 			return;
 
-		if ( info.Attacker is Prop && info.Attacker.Tags.Has( DamageTags.IgnoreDamage ) )
+		if ( info.Attacker is GameObject attGo && attGo.Tags.Has( DamageTags.IgnoreDamage ) )
 			return;
 
-		if ( info.Attacker is Player attacker && attacker != this )
+		if ( info.Attacker?.Components.TryGet<Player>( out var attacker ) == true && attacker != this )
 		{
-			if ( GameManager.Current.State is not InProgress and not PostRound )
+			if ( GameManager.Instance.State is not InProgress and not PostRound )
 				return;
 
-			info.Damage *= attacker.RdmDamageScale;
+			info = info.WithDamage( info.Damage * attacker.RdmDamageScale );
 
 			if ( !info.HasTag( DamageTags.Slash ) )
-				info.Damage *= attacker.DamageFactor;
+				info = info.WithDamage( info.Damage * attacker.DamageFactor );
 		}
 
 		if ( info.HasTag( DamageTags.Bullet ) )
 		{
-			info.Damage *= GetBulletDamageMultipliers( info );
+			info = info.WithDamage( info.Damage * GetBulletDamageMultipliers( info ) );
 			CreateBloodSplatter( info, 180f );
 		}
 
@@ -154,9 +124,9 @@ public partial class Player
 			CreateBloodSplatter( info, 64f );
 
 		if ( info.HasTag( DamageTags.Blast ) )
-			Deafen( To.Single( this ), info.Damage.LerpInverse( 0, 60 ) );
+			BroadcastDeafen( info.Damage.LerpInverse( 0, 60 ) );
 
-		info.Damage = Math.Min( Health, info.Damage );
+		info = info.WithDamage( Math.Min( Health, info.Damage ) );
 
 		LastAttacker = info.Attacker;
 		LastAttackerWeapon = info.Weapon;
@@ -166,41 +136,23 @@ public partial class Player
 		Health -= info.Damage;
 		Event.Run( TTTEvent.Player.TookDamage, this );
 
-		SendDamageInfo( To.Single( this ) );
-
-		this.ProceduralHitReaction( info );
+		BroadcastDamageInfo( info );
 
 		if ( Health <= 0f )
 			OnKilled();
 	}
 
-	public void SendDamageInfo( To to )
-	{
-		Game.AssertServer();
-
-		SendDamageInfo
-		(
-			to,
-			LastAttacker,
-			LastDamage.Weapon,
-			LastAttackerWeaponInfo,
-			LastDamage.Damage,
-			LastDamage.Tags?.ToArray(),
-			LastDamage.Position
-		);
-	}
-
 	private void CreateBloodSplatter( DamageInfo info, float maxDistance )
 	{
-		var trace = Trace.Ray( new Ray( info.Position, info.Force.Normal ), maxDistance )
-			.Ignore( this )
+		var trace = Scene.Trace.Ray( new Ray( info.Position, info.Force.Normal ), maxDistance )
+			.IgnoreGameObject( GameObject )
 			.Run();
 
 		if ( !trace.Hit )
 			return;
 
 		var decal = ResourceLibrary.Get<DecalDefinition>( "decals/blood_splatter.decal" );
-		Decal.Place( To.Everyone, decal, null, 0, trace.EndPosition - trace.Direction * 1f, Rotation.LookAt( trace.Normal ), Color.White );
+		Decal.Place( decal, trace.EndPosition - trace.Direction * 1f, Rotation.LookAt( trace.Normal ), Color.White );
 	}
 
 	private float GetBulletDamageMultipliers( DamageInfo info )
@@ -212,10 +164,14 @@ public partial class Player
 
 		if ( info.IsHeadshot() )
 		{
-			var weaponInfo = GameResource.GetInfo<WeaponInfo>( info.Weapon.ClassName );
-			damageMultiplier *= weaponInfo?.HeadshotMultiplier ?? 2f;
+			GameObject weaponGo = info.Weapon?.GameObject;
+			var carriable = weaponGo?.Components.Get<Carriable>();
+			if ( carriable?.Info is WeaponInfo wInfo )
+				damageMultiplier *= wInfo.HeadshotMultiplier;
+			else
+				damageMultiplier *= 2f;
 		}
-		else if ( info.Hitbox.HasAnyTags( "arm", "hand" ) )
+		else if ( info.HasTag( "arm" ) || info.HasTag( "hand" ) )
 		{
 			damageMultiplier *= 0.55f;
 		}
@@ -231,37 +187,20 @@ public partial class Player
 		LastDamage = default;
 	}
 
-	[ClientRpc]
-	public static void Deafen( float strength )
+	[Broadcast( NetPermission.HostOnly )]
+	private void BroadcastDeafen( float strength )
 	{
 		Audio.SetEffect( "flashbang", strength, velocity: 20.0f, fadeOut: 4.0f * strength );
 	}
 
-	[ClientRpc]
-	private void SendDamageInfo( Entity a, Entity w, CarriableInfo wI, float d, string[] tags, Vector3 p)
+	[Broadcast( NetPermission.HostOnly )]
+	private void BroadcastDamageInfo( DamageInfo info )
 	{
-		var info = DamageInfo.Generic( 100f )
-			.WithAttacker( a )
-			.WithWeapon( w )
-			.WithPosition( p );
-
-		info.Tags = new HashSet<string>( tags ?? Array.Empty<string>() );
-
-		LastAttacker = a;
-		LastAttackerWeapon = w;
-		LastAttackerWeaponInfo = wI;
+		LastAttacker = info.Attacker;
+		LastAttackerWeapon = info.Weapon;
 		LastDamage = info;
 
-		if ( IsLocalPawn )
+		if ( !IsProxy )
 			Event.Run( TTTEvent.Player.TookDamage, this );
-	}
-
-	[ClientRpc]
-	public static void ClientOnKilled( Player player )
-	{
-		if ( !player.IsValid() )
-			return;
-
-		player.ClientOnKilled();
 	}
 }

@@ -5,11 +5,9 @@ namespace TTT;
 
 public partial class Player
 {
-	[Net, Local]
-	public int Credits { get; set; }
+	[Sync] public int Credits { get; set; }
 
-	[Net, Local]
-	public IList<ItemInfo> PurchasedLimitedShopItems { get; private set; }
+	public List<ItemInfo> PurchasedLimitedShopItems { get; private set; } = new();
 
 	public bool CanPurchase( ItemInfo item )
 	{
@@ -31,15 +29,17 @@ public partial class Player
 		return true;
 	}
 
-	[ConCmd.Server]
-	public static void PurchaseItem( int itemId )
+	[ConCmd( "ttt_purchase_item" )]
+	public static void PurchaseItem( string itemResourcePath )
 	{
-		var player = ConsoleSystem.Caller.Pawn as Player;
+		if ( !Networking.IsHost )
+			return;
 
+		var player = GameManager.Instance?.FindPlayerByConnection( Rpc.Caller );
 		if ( !player.IsValid() )
 			return;
 
-		var itemInfo = ResourceLibrary.Get<ItemInfo>( itemId );
+		var itemInfo = ResourceLibrary.Get<ItemInfo>( itemResourcePath );
 		if ( itemInfo is null )
 			return;
 
