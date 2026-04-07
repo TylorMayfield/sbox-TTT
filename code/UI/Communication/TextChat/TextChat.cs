@@ -58,6 +58,8 @@ public partial class TextChat : Panel
 		if ( !IsOpen )
 			return;
 
+		Player.SendAfkHeartbeat();
+
 		switch ( player.CurrentChannel )
 		{
 			case Channel.All:

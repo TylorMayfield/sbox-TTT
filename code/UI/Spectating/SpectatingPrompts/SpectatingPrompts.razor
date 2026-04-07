@@ -85,7 +85,8 @@
 
 	protected override int BuildHash()
 	{
-		return HashCode.Combine(Hud.DisplayedPlayer.SteamId, Hud.DisplayedPlayer.IsAlive, Hud.DisplayedPlayer.Prop, (Game.LocalPawn as TTT.Player)?.LastAttacker?.NetworkIdent ?? 0, HasSubmittedReport, ReportReason);
+		var displayedPlayer = Hud.DisplayedPlayer;
+		return HashCode.Combine(displayedPlayer?.SteamId ?? 0, displayedPlayer?.IsAlive ?? false, displayedPlayer?.Prop?.NetworkIdent ?? 0, (Game.LocalPawn as TTT.Player)?.LastAttacker?.NetworkIdent ?? 0, HasSubmittedReport, ReportReason);
 	}
 }
 

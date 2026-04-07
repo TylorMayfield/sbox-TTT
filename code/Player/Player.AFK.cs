@@ -1,58 +1,115 @@
 using Sandbox;
 using System;
-using System.Collections.Generic;
 
 namespace TTT;
 
 public partial class Player
 {
-	private TimeSince _timeSinceLastAction = 0f;
-	private bool _requestedAfkPunishment;
+	private TimeSince _timeSinceLastServerActivity = 0f;
+	private static TimeSince _timeSinceLastAfkHeartbeat = 0f;
 	private bool _isHandlingAfkPunishment;
+	private Vector3 _lastAfkObservedPosition;
+	private Vector3 _lastAfkObservedInput;
+	private Angles _lastAfkObservedViewAngles;
+	private Entity _lastAfkObservedActiveChild;
 
 	private void CheckAFK()
 	{
-		if ( Client.IsBot || Spectating.IsForced || _requestedAfkPunishment )
-			return;
-
-		if ( !IsAlive )
+		if ( _isHandlingAfkPunishment )
 		{
-			_timeSinceLastAction = 0;
-			_requestedAfkPunishment = false;
-			return;
-		}
-
-		var isAnyKeyPressed = false;
-
-		foreach ( var action in InputAction.All )
-			isAnyKeyPressed |= Input.Down( action );
-
-		var isMouseMoving = Input.MouseDelta != Vector2.Zero;
-
-		if ( isAnyKeyPressed || isMouseMoving )
-		{
-			_timeSinceLastAction = 0f;
-			_requestedAfkPunishment = false;
-			return;
-		}
-
-		if ( _timeSinceLastAction > GameManager.AFKTimer )
-		{
-			_requestedAfkPunishment = true;
 			Input.StopProcessing = true;
-			TriggerAfkPunishment();
+			return;
+		}
+
+		var hasUiLikeActivity = Input.MouseDelta != Vector2.Zero
+			|| Input.Down( InputAction.Score )
+			|| Input.Pressed( InputAction.Menu )
+			|| Input.Pressed( InputAction.Use )
+			|| Input.Pressed( InputAction.PrimaryAttack )
+			|| Input.Pressed( InputAction.SecondaryAttack );
+
+		if ( hasUiLikeActivity && _timeSinceLastAfkHeartbeat > 1f )
+		{
+			_timeSinceLastAfkHeartbeat = 0f;
+			SendAfkHeartbeat();
 		}
 	}
 
-	[ConCmd.Server( Name = "ttt_afk_timeout" )]
-	private static void TriggerAfkPunishment()
+	[TTTEvent.Player.Spawned]
+	private static void ResetAfkTrackingOnSpawn( Player player )
 	{
-		var player = ConsoleSystem.Caller?.Pawn as Player;
-		if ( !player.IsValid() || player.Client.IsBot || player._isHandlingAfkPunishment )
+		if ( !Game.IsServer || !player.IsValid() )
 			return;
 
-		player._isHandlingAfkPunishment = true;
-		player.BeginAfkPunishment();
+		player.ResetAfkTracking();
+	}
+
+	private void ResetAfkTracking()
+	{
+		_timeSinceLastServerActivity = 0f;
+		_lastAfkObservedPosition = Position;
+		_lastAfkObservedInput = InputDirection;
+		_lastAfkObservedViewAngles = ViewAngles;
+		_lastAfkObservedActiveChild = ActiveChildInput;
+	}
+
+	[ConCmd.Server( Name = "ttt_afk_heartbeat" )]
+	public static void SendAfkHeartbeat()
+	{
+		var player = ConsoleSystem.Caller?.Pawn as Player;
+		if ( !player.IsValid() || player.Client.IsBot )
+			return;
+
+		player._timeSinceLastServerActivity = 0f;
+	}
+
+	[GameEvent.Tick.Server]
+	private static void TickAfkTracking()
+	{
+		foreach ( var client in Game.Clients )
+		{
+			if ( client.Pawn is not Player player || !player.IsValid() )
+				continue;
+
+			player.TickAfkTrackingInternal();
+		}
+	}
+
+	private void TickAfkTrackingInternal()
+	{
+		if ( Client.IsBot || IsForcedSpectator )
+		{
+			ResetAfkTracking();
+			return;
+		}
+
+		if ( !IsAlive )
+		{
+			ResetAfkTracking();
+			return;
+		}
+
+		var moved = Position.Distance( _lastAfkObservedPosition ) > 1f;
+		var changedInput = !_lastAfkObservedInput.AlmostEqual( InputDirection, 0.001f );
+		var changedView = MathF.Abs( ViewAngles.pitch - _lastAfkObservedViewAngles.pitch ) > 0.25f
+			|| MathF.Abs( ViewAngles.yaw - _lastAfkObservedViewAngles.yaw ) > 0.25f
+			|| MathF.Abs( ViewAngles.roll - _lastAfkObservedViewAngles.roll ) > 0.25f;
+		var changedActiveChild = _lastAfkObservedActiveChild != ActiveChildInput;
+		var velocityActivity = Velocity.Length > 5f;
+
+		if ( moved || changedInput || changedView || changedActiveChild || velocityActivity )
+			_timeSinceLastServerActivity = 0f;
+
+		_lastAfkObservedPosition = Position;
+		_lastAfkObservedInput = InputDirection;
+		_lastAfkObservedViewAngles = ViewAngles;
+		_lastAfkObservedActiveChild = ActiveChildInput;
+
+		if ( _isHandlingAfkPunishment || _timeSinceLastServerActivity <= GameManager.AFKTimer )
+			return;
+
+		_isHandlingAfkPunishment = true;
+		BeginAfkPunishment();
 	}
 
 	private async void BeginAfkPunishment()
@@ -65,8 +122,7 @@ public partial class Player
 			return;
 		}
 
-		if ( !GameManager.AfkAutoKick )
-			Client.SetValue( "forced_spectator", true );
+		Client.SetValue( "forced_spectator", true );
 
 		if ( GameManager.AfkFunDeath )
 		{
@@ -80,12 +136,11 @@ public partial class Player
 
 			if ( IsValid() && IsAlive )
 			{
-				var tags = new HashSet<string> { DamageTags.Explode, DamageTags.Avoidable };
 				var damage = DamageInfo.Generic( float.MaxValue )
 					.WithAttacker( this )
 					.WithTag( DamageTags.Silent );
-
-				damage.Tags = tags;
+				damage = damage.WithTag( DamageTags.Explode );
+				damage = damage.WithTag( DamageTags.Avoidable );
 				TakeDamage( damage );
 			}
 		}
@@ -111,7 +166,7 @@ public partial class Player
 				Client.Kick();
 		}
 
-		_requestedAfkPunishment = false;
+		ResetAfkTracking();
 		_isHandlingAfkPunishment = false;
 	}
 }
