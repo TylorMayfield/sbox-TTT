@@ -10,6 +10,8 @@ public sealed partial class PropPossession : Component
 {
 	public int Punches { get; private set; }
 	public int MaxPunches { get; private set; }
+	public Player Owner => _owner;
+	public Prop Prop => _prop;
 
 	private const float PunchRechargeTime = 1f;
 

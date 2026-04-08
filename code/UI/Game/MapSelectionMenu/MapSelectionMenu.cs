@@ -11,8 +11,11 @@ public partial class MapSelectionMenu : Panel
 
 	public MapSelectionMenu()
 	{
+		if ( Hud.Instance is null )
+			return;
+
 		// Delete unneeded UI elements.
-		foreach ( var panel in Game.RootPanel.Children.ToList() )
+		foreach ( var panel in Hud.Instance.Children.ToList() )
 		{
 			if ( panel is FullScreenHintMenu )
 				continue;

@@ -24,8 +24,13 @@ public class Perks : IEnumerable<Perk>
 		if ( !Networking.IsHost )
 			return;
 
-		Owner.Components.Add( perk );
-		_list.Add( perk );
+		var typeDescription = TypeLibrary.GetType( perk.GetType() );
+		var created = typeDescription is not null
+			? Owner.Components.Create( typeDescription ) as Perk
+			: null;
+
+		created ??= perk;
+		_list.Add( created );
 	}
 
 	public void Remove( Perk perk )
@@ -34,7 +39,7 @@ public class Perks : IEnumerable<Perk>
 			return;
 
 		_list.Remove( perk );
-		Owner.Components.Remove( perk );
+		perk?.Destroy();
 	}
 
 	public bool Has<T>()
@@ -59,7 +64,7 @@ public class Perks : IEnumerable<Perk>
 	{
 		foreach ( var perk in _list.ToArray() )
 		{
-			Owner.Components.Remove( perk );
+			perk?.Destroy();
 		}
 
 		_list.Clear();

@@ -62,7 +62,8 @@ public class ViewModel : Component
 			if ( cameraBoneIndex != -1 )
 			{
 				var boneTx = Renderer.GetBoneWorldTransform( cameraBoneIndex );
-				inRot *= WorldRotation.Inverse * boneTx.Rotation;
+				if ( boneTx.HasValue )
+					inRot *= WorldRotation.Inverse * boneTx.Value.Rotation;
 			}
 		}
 

@@ -178,7 +178,7 @@ public partial class Knife : Carriable
 
 			GameObject.Destroy();
 		}
-		else if ( trace.Body?.IsStatic == true )
+		else if ( trace.Body?.IsStatic() == true )
 		{
 			// Check angle to see if knife sticks or bounces
 			if ( Vector3.GetAngle( trace.Normal, trace.Direction ) < 120 )

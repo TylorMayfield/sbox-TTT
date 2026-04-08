@@ -208,7 +208,7 @@ public static class Karma
 			Rebase( player );
 
 			if ( Enabled && CheckAutoKick( player ) )
-				player.Network.Owner?.Kick();
+				player.Network.Owner?.Kick( "Kicked for low karma." );
 		}
 	}
 

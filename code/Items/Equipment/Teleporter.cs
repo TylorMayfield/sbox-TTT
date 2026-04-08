@@ -46,13 +46,6 @@ public partial class Teleporter : Carriable
 	{
 		if ( IsTeleporting )
 		{
-			if ( _particle == null )
-			{
-				var attachment = Owner.Components.Get<SkinnedModelRenderer>()?.GetAttachment( "spine" );
-				if ( attachment.HasValue )
-					_particle = SceneParticles.Play( Owner.Scene, "particles/teleporter/teleport.vpcf" );
-			}
-
 			if ( TimeSinceStartedTeleporting >= TeleportTime / 2 )
 			{
 				if ( Networking.IsHost && !_hasReachedLocation )

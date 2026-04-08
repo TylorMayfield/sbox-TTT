@@ -59,7 +59,8 @@ public partial class Player
 		if ( !IsProxy )
 		{
 			_viewLight = CreateSpotLight();
-			_viewLight.Tags.Add( "flashlight_view", "viewmodel" );
+			_viewLight.Tags.Add( "flashlight_view" );
+			_viewLight.Tags.Add( "viewmodel" );
 			_viewLight.Enabled = FlashlightEnabled;
 		}
 	}
@@ -106,7 +107,7 @@ public partial class Player
 		if ( muzzleTrace.Hit )
 			origin = muzzleTrace.EndPosition + (mz.Rotation.Backward * muzzleTrace.Distance) + downOffset;
 
-		var destination = origin + mz.Rotation.Forward * _viewLight.LightRange;
+		var destination = origin + mz.Rotation.Forward * _viewLight.Radius;
 		var direction = destination - origin;
 
 		var fwdTrace = Scene.Trace.Box( BBox.FromPositionAndSize( Vector3.Zero, 2f ), origin, destination )
@@ -132,12 +133,11 @@ public partial class Player
 		var light = go.Components.Create<SpotLight>();
 		light.Enabled = false;
 		light.Shadows = true;
-		light.LightRange = 1024f;
+		light.Radius = 1024f;
 		light.Attenuation = 1.0f;
-		light.Brightness = 2f;
 		light.LightColor = Color.White;
-		light.InnerConeAngle = 20f;
-		light.OuterConeAngle = 40f;
+		light.ConeInner = 20f;
+		light.ConeOuter = 40f;
 		light.FogStrength = 1.0f;
 		light.Cookie = Texture.Load( "materials/effects/lightcookie.vtex" );
 		return light;

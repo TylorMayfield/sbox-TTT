@@ -24,25 +24,9 @@
     </div>
 
     <section class="scroll">
-
-        @foreach ( var group in Game.Menu.InputSettings.Actions.GroupBy( x => x.GroupName ) )
-        {
-            <h2>@group.Key</h2>
-
-            <div class="form">
-            @foreach ( InputAction action in group )
-            {
-                <FormGroup>
-                    <Label>@action.Name</Label>
-                    <Control>
-                        <KeyBind Game="@Game.Menu" Action=@action class="glass with-padding with-grow with-click"></KeyBind>
-                    </Control>
-                </FormGroup>
-            }
-            </div>
-        }
-
-
+        <div class="form">
+            <Label>The legacy settings menu uses removed s&box menu APIs and still needs a dedicated migration pass.</Label>
+        </div>
     </section>
     
     <div class="navbar">
@@ -66,27 +50,8 @@
     public Package GamePackage { get; set; }   
 
 
-    public void CancelChanges()
-    {
-        foreach (var kb in Descendants.OfType<KeyBind>())
-        {
-            kb.Cancel();
-        }
-    }
-
-    public void RestoreDefaults()
-    {
-        Game.Menu.ResetBinds();
-    }
-
-    public void SaveChanges()
-    {
-        foreach (var kb in Descendants.OfType<KeyBind>())
-        {
-            kb.Apply();
-        }
-
-        Game.Menu.SaveBinds();
-    }
+    public void CancelChanges() { }
+    public void RestoreDefaults() { }
+    public void SaveChanges() { }
 
 }

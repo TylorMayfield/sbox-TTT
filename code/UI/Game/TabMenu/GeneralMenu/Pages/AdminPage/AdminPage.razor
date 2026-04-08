@@ -48,7 +48,7 @@
                                 <button class="alt" icon="assignment_ind" @onclick=@(() => Claim(report.Id))>Claim</button>
                                 <button class="alt" icon="task_alt" @onclick=@(() => Resolve(report.Id))>Resolve</button>
                                 <button class="alt" icon="cancel" @onclick=@(() => Dismiss(report.Id))>Dismiss</button>
-                                <button class="alt" icon="gavel" @onclick=@(() => Ban(report.AccusedSteamId))>Ban 60m</button>
+                                <button class="alt" icon="gavel" @onclick=@(() => Ban((long)report.AccusedSteamId))>Ban 60m</button>
                             </div>
                         </div>
                     }
@@ -66,8 +66,8 @@
                             <text>SteamID: @player.SteamId</text>
                         </div>
                         <div class="actions">
-                            <button class="alt" icon="logout" @onclick=@(() => Kick(player.SteamId))>Kick</button>
-                            <button class="alt" icon="gavel" @onclick=@(() => Ban(player.SteamId))>Ban 60m</button>
+                            <button class="alt" icon="logout" @onclick=@(() => Kick((long)player.SteamId))>Kick</button>
+                            <button class="alt" icon="gavel" @onclick=@(() => Ban((long)player.SteamId))>Ban 60m</button>
                         </div>
                     </div>
                 }

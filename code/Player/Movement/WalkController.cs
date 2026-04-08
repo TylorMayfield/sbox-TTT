@@ -27,7 +27,7 @@ public partial class Player
 
 		// Update eye position
 		var eyeHeight = IsDucking ? DuckEyeHeight : EyeHeight;
-		EyeLocalPosition = Vector3.Up * (eyeHeight * Transform.Scale.z);
+		EyeLocalPosition = Vector3.Up * (eyeHeight * WorldScale.z);
 		EyeRotation = ViewAngles.ToRotation();
 
 		// Compute wish velocity
@@ -41,7 +41,7 @@ public partial class Player
 			speed *= 0.5f;
 
 		wishVelocity *= speed;
-		CharController.WishVelocity = wishVelocity;
+		WishVelocity = wishVelocity;
 
 		// Handle jump
 		if ( CharController.IsOnGround && Input.Pressed( InputAction.Jump ) )
@@ -53,10 +53,14 @@ public partial class Player
 			CharController.Punch( Vector3.Up * jumpSpeed );
 		}
 
-		// Bhop settings
-		if ( GameManager.BhopEnabled )
+		if ( CharController.IsOnGround )
 		{
-			CharController.AirControl = GameManager.BhopAirControl;
+			CharController.ApplyFriction( 6f );
+			CharController.Accelerate( WishVelocity );
+		}
+		else if ( GameManager.BhopEnabled )
+		{
+			CharController.Accelerate( WishVelocity * GameManager.BhopAirControl );
 		}
 
 		CharController.Move();

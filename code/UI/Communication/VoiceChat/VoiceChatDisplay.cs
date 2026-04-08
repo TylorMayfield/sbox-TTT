@@ -1,6 +1,4 @@
-using Sandbox;
 using Sandbox.UI;
-using System.Linq;
 
 namespace TTT.UI;
 
@@ -10,15 +8,5 @@ public partial class VoiceChatDisplay : Panel
 
 	public VoiceChatDisplay() => Instance = this;
 
-	public void OnVoicePlayed( Connection client )
-	{
-		var entry = ChildrenOfType<VoiceChatEntry>().FirstOrDefault( x => x.Friend.Id == client.SteamId ) ?? new VoiceChatEntry( client ) { Parent = this };
-		entry.Update( client.Voice.CurrentLevel );
-	}
-
-	public override void Tick()
-	{
-		if ( Voice.IsRecording )
-			OnVoicePlayed( Connection.Local );
-	}
+	public void OnVoicePlayed() { }
 }

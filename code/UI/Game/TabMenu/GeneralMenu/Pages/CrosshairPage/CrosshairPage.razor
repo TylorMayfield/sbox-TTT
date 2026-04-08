@@ -21,15 +21,15 @@
             <br />
 
             <span>Size</span>
-            <Slider2D min="0" max="100" Value:bind=@Size />
+            <Sandbox.UI.TextEntry Value="@($"{Size:0}")" Disabled=@true />
             <br />
 
             <span>Thickness</span>
-            <Slider2D min="0" max="100" Value:bind=@Thickness />
+            <Sandbox.UI.TextEntry Value="@($"{Thickness:0}")" Disabled=@true />
             <br />
 
             <span>Gap</span>
-            <Slider2D min="-20" max="100" Value:bind=@Gap />
+            <Sandbox.UI.TextEntry Value="@($"{Gap:0}")" Disabled=@true />
             <br />
 
             <button class="alt" icon="save" @onclick=@SaveCrosshairData>Save Crosshair</button>

@@ -38,9 +38,9 @@ public abstract partial class Carriable : Component
 		get
 		{
 			if ( ViewModelRenderer.IsValid() && Player.Local == Owner )
-				return ViewModelRenderer.GetAttachment( "muzzle" ) ?? WorldTransform;
+				return ViewModelRenderer.GetAttachmentObject( "muzzle" )?.WorldTransform ?? WorldTransform;
 
-			return WorldRenderer.GetAttachment( "muzzle" ) ?? WorldTransform;
+			return WorldRenderer.GetAttachmentObject( "muzzle" )?.WorldTransform ?? WorldTransform;
 		}
 	}
 
@@ -149,7 +149,7 @@ public abstract partial class Carriable : Component
 
 	public virtual void SimulateAnimator( SkinnedModelRenderer renderer )
 	{
-		renderer.Set( "holdtype", (int)(Info?.HoldType ?? CitizenAnimationHelper.HoldTypes.None) );
+		renderer.Set( "holdtype", (int)(Info?.HoldType ?? Sandbox.Citizen.CitizenAnimationHelper.HoldTypes.None) );
 		renderer.Set( "aim_body_weight", 1.0f );
 		renderer.Set( "holdtype_handedness", 0 );
 	}

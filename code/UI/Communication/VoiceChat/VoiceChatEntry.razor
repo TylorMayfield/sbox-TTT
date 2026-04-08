@@ -3,22 +3,11 @@
 @inherits Panel
 
 <root class="background-color-primary opacity-heavy text-shadow rounded">
-    <img src="avatar:@_client.SteamId" class="avatar circle" />
-    <span class="name">@_client.Name</span>
+    <span class="name">Voice</span>
 </root>
 
 @code {
-    private string BorderColor()
-    {
-        var player = Utils.GetPlayersWhere( p => p.Network.Owner == _client ).FirstOrDefault();
-        if (player is null || !player.IsAlive)
-            return PlayerStatus.Spectator.GetColor().Hex;
-
-        if (player.Role is Detective)
-            return player.Role.Color.Hex;
-
-        return PlayerStatus.Alive.GetColor().Hex;
-    }
+    private string BorderColor() => PlayerStatus.Alive.GetColor().Hex;
 }
 
 <style>

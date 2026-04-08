@@ -1,5 +1,6 @@
 using Sandbox;
 using System;
+using System.Linq;
 
 namespace TTT;
 
@@ -84,7 +85,7 @@ public partial class GameManager
 		if ( !player.IsValid() )
 			return;
 
-		player.TakeDamage( DamageInfo.Generic( damage ) );
+		player.TakeDamage( new DamageInfo { Damage = damage } );
 	}
 
 	[ConCmd( "ttt_setrole" )]
@@ -159,7 +160,11 @@ public partial class GameManager
 
 		var package = await Package.Fetch( mapIdent, true );
 		if ( package is not null && package.PackageType == Package.Type.Map )
-			Game.ChangeLevel( mapIdent );
+		{
+			var options = new SceneLoadOptions();
+			if ( options.SetScene( mapIdent ) )
+				Game.ChangeScene( options );
+		}
 		else
 			Log.Error( $"{mapIdent} does not exist as a s&box map!" );
 	}

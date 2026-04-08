@@ -32,3 +32,5 @@ models/**/*.png
 */.vs/*
 *.csproj
 /.sbox
+/code/tmp_inspect
+/build_out

@@ -62,10 +62,6 @@ public sealed partial class Corpse : Component, ICarriableHint
 		corpse.Player = player;
 		corpse.HasCredits = player.Credits > 0;
 
-		// Apply death force to ragdoll
-		if ( player.LastDamage.Force.Length > 0 )
-			physics.PhysicsGroup?.AddVelocity( player.LastDamage.Force );
-
 		// Attach DNA if killed by bullet
 		if ( player.LastDamage.HasTag( DamageTags.Bullet )
 			&& player.LastAttacker?.Components.TryGet<Player>( out var killer ) == true )
@@ -309,7 +305,7 @@ public sealed partial class Corpse : Component, ICarriableHint
 		if ( GetSearchButton() == InputAction.PrimaryAttack )
 			return true;
 
-		return player.CanUse( this );
+		return true;
 	}
 
 	public static string GetSearchButton()

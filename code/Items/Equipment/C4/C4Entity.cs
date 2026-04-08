@@ -113,8 +113,7 @@ public sealed partial class C4Entity : Component, ICarriableHint
 			{
 				Damage = damage,
 				Attacker = Planter?.GameObject,
-				Position = WorldPosition,
-				Force = diff.Normal * damage
+				Position = WorldPosition
 			};
 
 			if ( isTraitorC4 && player.Team == Team.Traitors )
@@ -245,4 +244,3 @@ public class C4Note : Component
 {
 	public int SafeWireNumber { get; set; }
 }
-

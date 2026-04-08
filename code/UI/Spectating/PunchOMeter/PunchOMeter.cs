@@ -11,7 +11,7 @@ public partial class PunchOMeter : Panel
 	public PunchOMeter( PropPossession possession )
 	{
 		_possession = possession;
-		Game.RootPanel.AddChild( this );
+		Hud.Instance?.AddChild( this );
 	}
 
 	protected override int BuildHash() => HashCode.Combine( _possession.Punches, _possession.MaxPunches );

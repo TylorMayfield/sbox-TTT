@@ -1,5 +1,6 @@
 using Sandbox;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TTT;
 
@@ -14,8 +15,10 @@ public partial class Player
 
 	public void DressPlayer()
 	{
-		if ( _currentPreset is not null )
-			ClothingContainer.Clothing = _currentPreset;
+		ClothingContainer = new();
+
+		foreach ( var clothing in _currentPreset ?? Enumerable.Empty<Clothing>() )
+			ClothingContainer.Add( clothing );
 
 		ClothingContainer.DressEntity( Renderer );
 	}

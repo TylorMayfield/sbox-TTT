@@ -20,7 +20,6 @@ public partial class TextChat : Panel
 			{
 				Input.Focus();
 				Input.Text = string.Empty;
-				Input.Label.SetCaretPosition( 0 );
 			}
 		}
 	}
@@ -60,7 +59,7 @@ public partial class TextChat : Panel
 		if ( !IsOpen )
 			return;
 
-		Player.SendAfkHeartbeat();
+		player.SendAfkHeartbeat();
 
 		switch ( player.CurrentChannel )
 		{
@@ -100,7 +99,6 @@ public partial class TextChat : Panel
 		RemoveClass( "open" );
 		Input.Blur();
 		Input.Text = string.Empty;
-		Input.Label.SetCaretPosition( 0 );
 	}
 
 	private void Submit()
@@ -184,13 +182,13 @@ public partial class TextChat : Panel
 		switch ( channel )
 		{
 			case Channel.All:
-				Instance?.AddEntry( new TextChatEntry( playerId, playerName, message, ResourceLibrary.Get<RoleInfo>( roleId )?.Color ?? _allChatColor ) );
+				Instance?.AddEntry( new TextChatEntry( (long)playerId, playerName, message, _allChatColor ) );
 				return;
 			case Channel.Team:
-				Instance?.AddEntry( new TextChatEntry( playerId, $"(TEAM) {playerName}", message, ResourceLibrary.Get<RoleInfo>( roleId )?.Color ?? _allChatColor ) );
+				Instance?.AddEntry( new TextChatEntry( (long)playerId, $"(TEAM) {playerName}", message, _allChatColor ) );
 				return;
 			case Channel.Spectator:
-				Instance?.AddEntry( new TextChatEntry( playerId, playerName, message, _spectatorChatColor ) );
+				Instance?.AddEntry( new TextChatEntry( (long)playerId, playerName, message, _spectatorChatColor ) );
 				return;
 		}
 	}

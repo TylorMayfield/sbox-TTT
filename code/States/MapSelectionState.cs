@@ -18,15 +18,19 @@ public partial class MapSelectionState : BaseState
 	{
 		if ( Votes.Count == 0 )
 		{
-			Game.ChangeLevel( Game.Random.FromList( GameManager.Instance.MapVoteIdents.ToList() ) ?? GameManager.DefaultMap );
+			var options = new SceneLoadOptions();
+			if ( options.SetScene( Game.Random.FromList( GameManager.Instance.MapVoteIdents.ToList() ) ?? GameManager.DefaultMap ) )
+				Game.ChangeScene( options );
 			return;
 		}
 
-		Game.ChangeLevel(
-			Votes.GroupBy( x => x.Value )
+		var winningMap = Votes.GroupBy( x => x.Value )
 			.OrderBy( x => x.Count() )
-			.Last().Key
-		);
+			.Last().Key;
+
+		var sceneOptions = new SceneLoadOptions();
+		if ( sceneOptions.SetScene( winningMap ) )
+			Game.ChangeScene( sceneOptions );
 	}
 
 	protected override void OnStart()

@@ -57,7 +57,7 @@ public partial class RoleSummary : Panel
 		_playerNames[victim.SteamId] = victim.SteamName;
 		_damageDealt[attacker.SteamId] = _damageDealt.GetValueOrDefault( attacker.SteamId ) + victim.LastDamage.Damage;
 
-		if ( victim.LastDamage.HasTag( DamageTags.Burn ) )
+		if ( victim.LastDamage.Tags.Has( DamageTags.Burn ) )
 			_burnDamageDealt[attacker.SteamId] = _burnDamageDealt.GetValueOrDefault( attacker.SteamId ) + victim.LastDamage.Damage;
 	}
 
@@ -73,7 +73,7 @@ public partial class RoleSummary : Panel
 			_kills[attacker.SteamId] = _kills.GetValueOrDefault( attacker.SteamId ) + 1;
 		}
 
-		if ( victim.LastDamage.HasTag( DamageTags.Fall ) )
+		if ( victim.LastDamage.Tags.Has( DamageTags.Fall ) )
 		{
 			_playerNames[victim.SteamId] = victim.SteamName;
 			_fallDeaths[victim.SteamId] = _fallDeaths.GetValueOrDefault( victim.SteamId ) + 1;
@@ -250,4 +250,3 @@ public partial class RoleSummary : Panel
 		public List<RoundHighlight> Highlights { get; set; } = new();
 	}
 }
-

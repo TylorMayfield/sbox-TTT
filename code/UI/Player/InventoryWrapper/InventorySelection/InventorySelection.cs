@@ -68,12 +68,12 @@ public partial class InventorySelection : Panel
 
 			if ( activeCarriable is null || activeCarriableOfSlotTypeIndex == -1 )
 			{
-				player.ActiveChildInput = weaponsOfSlotTypeSelected.FirstOrDefault();
+				player.ActiveCarriable = weaponsOfSlotTypeSelected.FirstOrDefault();
 			}
 			else
 			{
 				activeCarriableOfSlotTypeIndex = GetNextWeaponIndex( activeCarriableOfSlotTypeIndex, weaponsOfSlotTypeSelected.Count );
-				player.ActiveChildInput = weaponsOfSlotTypeSelected[activeCarriableOfSlotTypeIndex];
+				player.ActiveCarriable = weaponsOfSlotTypeSelected[activeCarriableOfSlotTypeIndex];
 			}
 		}
 
@@ -84,7 +84,7 @@ public partial class InventorySelection : Panel
 				p is InventorySlot slot && slot.Carriable == activeCarriable );
 
 			var newSelectedIndex = ClampSlotIndex( -(int)mouseWheelIndex.y + activeCarriableIndex, childrenList.Count - 1 );
-			player.ActiveChildInput = (childrenList[newSelectedIndex] as InventorySlot)?.Carriable;
+			player.ActiveCarriable = (childrenList[newSelectedIndex] as InventorySlot)?.Carriable;
 		}
 	}
 

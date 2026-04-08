@@ -17,10 +17,11 @@ public static class Spectating
 		{
 			ForcedSpectator = value;
 
-			if ( !value || (Player.Local is Player player && !player.IsAlive) )
+			var player = Player.Local;
+			if ( !value || player is null || !player.IsAlive )
 				return;
 
-			GameManager.Kill();
+			player.Kill();
 		}
 	}
 

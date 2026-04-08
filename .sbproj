@@ -47,6 +47,8 @@
     "GeneralExtensions": true,
     "TargettedExtensions": true,
     "ExtensionApiVersion": 1001,
+    "StartupScene": "scenes/main.scene",
+    "MapStartupScene": "scenes/main.scene",
     "PackageSettings": [
       {
         "DisplayType": "Boolean",

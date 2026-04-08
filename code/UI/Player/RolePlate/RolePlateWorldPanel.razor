@@ -7,6 +7,10 @@
 
 @code {
     public string Icon { get; set; }
+
+    public RolePlateWorldPanel() : base(Sandbox.Game.ActiveScene.SceneWorld)
+    {
+    }
 }
 
 <style>

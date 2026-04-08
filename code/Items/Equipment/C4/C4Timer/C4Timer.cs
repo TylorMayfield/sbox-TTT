@@ -10,6 +10,7 @@ public partial class C4Timer : WorldPanel
 	private readonly C4Entity _c4;
 
 	public C4Timer( C4Entity c4 )
+		: base( Sandbox.Game.ActiveScene.SceneWorld )
 	{
 		_c4 = c4;
 	}

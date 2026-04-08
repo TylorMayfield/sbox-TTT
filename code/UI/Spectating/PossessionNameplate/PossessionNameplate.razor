@@ -3,7 +3,7 @@
 @namespace TTT.UI
 
 <root>
-    <span class="name text-shadow">@_prop.Owner.Client.Name</span>
+    <span class="name text-shadow">@(_prop.Components.Get<global::TTT.PropPossession>()?.Owner?.Client?.DisplayName ?? "Possessed Prop")</span>
 </root>
 
 <style>

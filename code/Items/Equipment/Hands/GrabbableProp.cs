@@ -1,6 +1,4 @@
 using Sandbox;
-using Sandbox.Physics;
-
 namespace TTT;
 
 public class GrabbableProp : IGrabbable
@@ -13,9 +11,6 @@ public class GrabbableProp : IGrabbable
 	private readonly Player _owner;
 	private bool _isThrowing = false;
 	private readonly bool _isInteractable = false;
-	private PhysicsBody _handPhysicsBody;
-	private PhysicsJoint _joint;
-
 	public GrabbableProp( Player owner, GameObject grabbedGo )
 	{
 		_owner = owner;
@@ -26,24 +21,6 @@ public class GrabbableProp : IGrabbable
 
 		GrabbedGo = grabbedGo;
 
-		var rb = GrabbedGo.Components.Get<Rigidbody>();
-		if ( rb?.PhysicsBody is not null )
-		{
-			_handPhysicsBody = new PhysicsBody( Game.PhysicsWorld )
-			{
-				BodyType = PhysicsBodyType.Keyframed
-			};
-
-			var renderer = owner.Components.Get<SkinnedModelRenderer>();
-			var attachment = renderer?.GetAttachment( Hands.MiddleHandsAttachment );
-			if ( attachment.HasValue )
-			{
-				_handPhysicsBody.Position = attachment.Value.Position;
-				_handPhysicsBody.Rotation = attachment.Value.Rotation;
-			}
-
-			_joint = PhysicsJoint.CreateFixed( _handPhysicsBody, rb.PhysicsBody );
-		}
 	}
 
 	public void Update( Player player )
@@ -62,9 +39,6 @@ public class GrabbableProp : IGrabbable
 			return;
 		}
 
-		if ( _handPhysicsBody is null )
-			return;
-
 		if ( Vector3.DistanceBetween( GrabbedGo.WorldPosition, _owner.EyePosition ) > Player.UseDistance * 1.75f )
 		{
 			Drop();
@@ -75,20 +49,14 @@ public class GrabbableProp : IGrabbable
 		var attachment = renderer?.GetAttachment( Hands.MiddleHandsAttachment );
 		if ( attachment.HasValue )
 		{
-			_handPhysicsBody.Position = attachment.Value.Position;
-			_handPhysicsBody.Rotation = attachment.Value.Rotation;
+			GrabbedGo.WorldPosition = attachment.Value.Position;
+			GrabbedGo.WorldRotation = attachment.Value.Rotation;
 		}
 	}
 
 	public GameObject Drop()
 	{
 		var droppedGo = GrabbedGo;
-
-		if ( _joint.IsValid() )
-			_joint.Remove();
-
-		_joint = null;
-		_handPhysicsBody = null;
 
 		if ( droppedGo.IsValid() )
 		{

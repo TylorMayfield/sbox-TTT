@@ -19,7 +19,7 @@
             ItemInfo=@itemInfo
             CanPurchase=@canPurchase
             @onclick=@(() => {
-            if (canPurchase) TTT.Player.PurchaseItem( itemInfo.ResourceId ); })
+            if (canPurchase) TTT.Player.PurchaseItem( itemInfo.ResourcePath ); })
             @onmouseover=@(() => _selectedItem = itemInfo)
             @onmouseout=@(() => _selectedItem = null) />
         }

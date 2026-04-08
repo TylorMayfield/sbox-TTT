@@ -9,45 +9,16 @@
 @inherits Panel
 
 <root class="gamemainmenu">
-
-    <div class="navigator-canvas" slot="navigator-canvas"></div>
+    <div class="navigator-canvas">
+        <FrontPage />
+    </div>
 </root>
 
 @code
 {
     public Menu()
     {
-        // DefaultUrl = "/";
-
-        // AddDestination("/", typeof(FrontPage));
-        // AddDestination("/create", typeof(CreateGamePage));
-        // AddDestination("/active", typeof(ActivePage));
-        // AddDestination("/servers", typeof(ServerListPage));
-        // AddDestination("/settings", typeof(SettingsPage));
-
-        // if (Game.InGame) Navigate("/active");
-
         BindClass( "ingame", () => Game.InGame );
-        BindClass( "inlobby", () => Game.Menu?.Lobby != null);
+        BindClass( "inlobby", () => false );
     }
-
-	// protected override void OnEvent( PanelEvent e )
-	// {
-	// 	if ( e.Name == "package.changed" )
-	// 	{
-	// 		StateHasChanged();
-	// 		return;
-	// 	}
-
-	// 	base.OnEvent( e );
-	// }
-
-    // [GameEvent.Menu.ServerJoined]
-    // public void OnServerJoined() => Navigate("/active");
-
-    // [GameEvent.Menu.LobbyLeave]
-    // public void OnLobbyLeave() => Navigate("/");
-
-    // [GameEvent.Menu.ServerLeave]
-    // public void OnServerLeave() => Navigate("/");
 }

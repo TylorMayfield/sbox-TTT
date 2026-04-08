@@ -25,7 +25,7 @@ public static class MapHandler
 	{
 		foreach ( var go in Game.ActiveScene.GetAllObjects( true ).ToList() )
 		{
-			if ( go.Tags.Has( "map" ) || go == Game.ActiveScene.Directory.Root )
+			if ( go.Tags.Has( "map" ) || go == Game.ActiveScene.Root )
 				continue;
 
 			if ( go.Tags.Has( "player" ) || go.Tags.Has( "manager" ) )

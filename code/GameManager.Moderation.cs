@@ -203,7 +203,7 @@ public partial class GameManager
 		if ( connection is null )
 			return true;
 
-		return connection.IsValid() && (connection.IsHost || AdminSteamIds.Contains( connection.SteamId ));
+		return connection.IsHost || AdminSteamIds.Contains( connection.SteamId );
 	}
 
 	private static IEnumerable<Connection> GetAdminConnections()
@@ -355,7 +355,7 @@ public partial class GameManager
 		var target = FindPlayerBySteamId( steamId );
 		if ( target.IsValid() )
 		{
-			target.Network.Owner?.Kick();
+			target.Network.Owner?.Kick( reason );
 			return;
 		}
 
@@ -397,7 +397,7 @@ public partial class GameManager
 		if ( punishments.Contains( "kick" ) && accused.IsValid() )
 		{
 			summary.Add( "kick" );
-			accused.Network.Owner?.Kick();
+			accused.Network.Owner?.Kick( "Removed due to RDM punishment." );
 		}
 
 		if ( punishments.Contains( "ban" ) )
@@ -701,7 +701,7 @@ public partial class GameManager
 
 			AddModerationLog( "Admin Action", $"{Rpc.Caller?.DisplayName ?? "Server Console"} kicked {connection.DisplayName}" );
 			SaveModerationData();
-			connection.Kick();
+			connection.Kick( "Kicked by an admin." );
 			PushModerationSnapshotToAdmins();
 			PushTribunalSnapshot();
 			return;

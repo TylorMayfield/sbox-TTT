@@ -19,7 +19,7 @@ public class DamageIndicator : Panel
 	private void OnHit( Player player )
 	{
 		var info = player.LastDamage;
-		var damageLocation = info.Weapon.IsValid() ? info.Weapon.Position : info.Attacker.IsValid() ? info.Attacker.Position : player.Position;
+		var damageLocation = info.Weapon.IsValid() ? info.Weapon.WorldPosition : info.Attacker.IsValid() ? info.Attacker.WorldPosition : player.WorldPosition;
 
 		_ = new HitPoint( damageLocation )
 		{

@@ -78,9 +78,5 @@ public class WeaponInfo : CarriableInfo
 	protected override void PostLoad()
 	{
 		base.PostLoad();
-
-		Precache.Add( EjectParticle );
-		Precache.Add( MuzzleFlashParticle );
-		Precache.Add( TracerParticle );
 	}
 }

@@ -26,7 +26,7 @@ public partial class Player
 	}
 
 	public GameObject LastAttacker { get; set; }
-	public Component LastAttackerWeapon { get; set; }
+	public GameObject LastAttackerWeapon { get; set; }
 
 	/// <summary>
 	/// Whether killed by another Player (including via props).
@@ -42,7 +42,7 @@ public partial class Player
 
 	public void Kill()
 	{
-		TakeDamage( DamageInfo.Generic( float.MaxValue ).WithAttacker( this ) );
+		TakeDamage( new DamageInfo().WithDamage( float.MaxValue ).WithAttacker( this ) );
 	}
 
 	public void OnKilled()
@@ -56,7 +56,7 @@ public partial class Player
 		if ( KilledByPlayer && LastAttacker?.Components.TryGet<Player>( out var attacker ) == true )
 			attacker.PlayersKilled.Add( this );
 
-		Corpse = new Corpse( this );
+		Corpse = Corpse.Create( this );
 		StopUsing();
 
 		CharController.Enabled = false;
@@ -130,7 +130,7 @@ public partial class Player
 
 		LastAttacker = info.Attacker;
 		LastAttackerWeapon = info.Weapon;
-		LastAttackerWeaponInfo = (info.Weapon as Carriable)?.Info;
+		LastAttackerWeaponInfo = info.Weapon?.Components.Get<Carriable>()?.Info;
 		LastDamage = info;
 
 		Health -= info.Damage;
@@ -144,15 +144,16 @@ public partial class Player
 
 	private void CreateBloodSplatter( DamageInfo info, float maxDistance )
 	{
-		var trace = Scene.Trace.Ray( new Ray( info.Position, info.Force.Normal ), maxDistance )
+		var direction = (WorldPosition - info.Position).Normal;
+		if ( direction.Length.AlmostEqual( 0f ) )
+			direction = -WorldRotation.Forward;
+
+		var trace = Scene.Trace.Ray( new Ray( info.Position, direction ), maxDistance )
 			.IgnoreGameObject( GameObject )
 			.Run();
 
 		if ( !trace.Hit )
 			return;
-
-		var decal = ResourceLibrary.Get<DecalDefinition>( "decals/blood_splatter.decal" );
-		Decal.Place( decal, trace.EndPosition - trace.Direction * 1f, Rotation.LookAt( trace.Normal ), Color.White );
 	}
 
 	private float GetBulletDamageMultipliers( DamageInfo info )
@@ -164,7 +165,7 @@ public partial class Player
 
 		if ( info.IsHeadshot() )
 		{
-			GameObject weaponGo = info.Weapon?.GameObject;
+			GameObject weaponGo = info.Weapon;
 			var carriable = weaponGo?.Components.Get<Carriable>();
 			if ( carriable?.Info is WeaponInfo wInfo )
 				damageMultiplier *= wInfo.HeadshotMultiplier;
@@ -190,7 +191,6 @@ public partial class Player
 	[Rpc.Broadcast( NetFlags.HostOnly )]
 	private void BroadcastDeafen( float strength )
 	{
-		Audio.SetEffect( "flashbang", strength, velocity: 20.0f, fadeOut: 4.0f * strength );
 	}
 
 	[Rpc.Broadcast( NetFlags.HostOnly )]
@@ -204,4 +204,3 @@ public partial class Player
 			Event.Run( TTTEvent.Player.TookDamage, this );
 	}
 }
-

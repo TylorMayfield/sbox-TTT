@@ -182,7 +182,10 @@ public abstract partial class Weapon : Carriable
 		{
 			var attachment = WorldRenderer.GetAttachment( "muzzle" );
 			if ( attachment.HasValue )
-				SceneParticles.PlayInstant( Scene, Info.MuzzleFlashParticle, attachment.Value );
+			{
+				var particles = new SceneParticles( Scene.SceneWorld, Info.MuzzleFlashParticle );
+				particles?.SetControlPoint( 0, attachment.Value.Position );
+			}
 		}
 
 		ViewModelRenderer?.Set( "fire", true );
@@ -203,8 +206,6 @@ public abstract partial class Weapon : Carriable
 
 	protected virtual void ShootBullet( float spread, float force, float damage, float bulletSize, int bulletCount )
 	{
-		Game.SetRandomSeed( Time.Tick );
-
 		while ( bulletCount-- > 0 )
 		{
 			var forward = Owner.EyeRotation.Forward;
@@ -213,7 +214,7 @@ public abstract partial class Weapon : Carriable
 
 			foreach ( var trace in TraceBullet( Owner.EyePosition, Owner.EyePosition + forward * 20000f, bulletSize ) )
 			{
-				trace.Surface.DoBulletImpact( trace );
+				trace.Surface?.DoBulletImpact( trace );
 
 				var fullEndPosition = trace.EndPosition + trace.Direction * bulletSize;
 
@@ -243,10 +244,13 @@ public abstract partial class Weapon : Carriable
 
 				if ( hitPlayer is not null )
 				{
-					var dmgInfo = DamageInfo.FromBullet( trace.EndPosition, forward * 100f * force, damage )
+					var dmgInfo = new DamageInfo()
+						.WithDamage( damage )
 						.UsingTraceResult( trace )
 						.WithAttacker( Owner.GameObject )
 						.WithWeapon( this );
+
+					dmgInfo = dmgInfo.WithTag( DamageTags.Bullet );
 
 					if ( Info.IsSilenced || dmgInfo.IsHeadshot() )
 						dmgInfo = dmgInfo.WithTag( "silent" );

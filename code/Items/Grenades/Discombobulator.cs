@@ -17,7 +17,6 @@ public class Discombobulator : Grenade
 	{
 		base.OnExplode();
 
-		SceneParticles.PlayInstant( Scene, Particle, new Transform( WorldPosition ) );
 		Sound.Play( ExplodeSound, WorldPosition );
 
 		var radius = 400f;

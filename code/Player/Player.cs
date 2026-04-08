@@ -19,6 +19,7 @@ public partial class Player : Component
 
 	// Input (processed on the owning client)
 	public Vector3 InputDirection { get; set; }
+	public Vector3 WishVelocity { get; private set; }
 	[Sync] public Angles ViewAngles { get; set; }
 	public Angles OriginalViewAngles { get; private set; }
 
@@ -181,7 +182,7 @@ public partial class Player : Component
 			OriginalViewAngles = ViewAngles;
 			InputDirection = Input.AnalogMove;
 
-			if ( !Input.StopProcessing )
+			if ( !_isHandlingAfkPunishment )
 			{
 				var look = Input.AnalogLook;
 
@@ -275,7 +276,7 @@ public partial class Player : Component
 		if ( !trace.Hit )
 			return;
 
-		trace.Surface.DoFootstep( this, trace, e.Foot, volume );
+		trace.Surface?.DoFootstep( this, trace, 0, volume );
 	}
 
 	public float FootstepVolume()
@@ -292,7 +293,7 @@ public partial class Player : Component
 		WorldRotation = Rotation.Slerp( WorldRotation, idealRotation, CharController.Velocity.Length * Time.Delta * turnSpeed );
 		WorldRotation = WorldRotation.Clamp( idealRotation, 45.0f, out var shuffle );
 
-		Renderer.Set( "wish_velocity", CharController.WishVelocity );
+		Renderer.Set( "wish_velocity", WishVelocity );
 		Renderer.Set( "velocity", CharController.Velocity );
 		Renderer.Set( "aim_yaw_offset", 0f );
 		Renderer.Set( "b_grounded", CharController.IsOnGround );
@@ -317,7 +318,7 @@ public partial class Player : Component
 			ActiveCarriable.SimulateAnimator( Renderer );
 		else
 		{
-			Renderer.Set( "holdtype", (int)CitizenAnimationHelper.HoldTypes.None );
+			Renderer.Set( "holdtype", (int)Sandbox.Citizen.CitizenAnimationHelper.HoldTypes.None );
 			Renderer.Set( "aim_body_weight", 0.5f );
 		}
 	}

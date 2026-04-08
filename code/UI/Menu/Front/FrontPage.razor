@@ -17,24 +17,13 @@
     </div>
 
     <div class="controls">
-
-        @if ( Game.InGame )
-        {
-            <a class="button" href="/active">Current Game</a>
-            <button text="Leave Game" onclick=@LeaveGame></button>
-            <span style="height: 20px;"></span>
-        }
-        else
-        {
-            <button text="Create Game "onclick=@OnClickCreateGame></button>
-        }
-
-        <a class="button" href="/servers">Find a Game</a>
-        <a class="button" href="/settings">Settings</a>
+        <div class="button disabled">Legacy menu migration in progress</div>
+        <div class="button disabled">Create Game unavailable</div>
+        <div class="button disabled">Settings unavailable</div>
 
         <span style="height: 20px;"></span>
 
-        <a class="button" @onclick=@Game.Menu.Close>Quit</a>
+        <a class="button" @onclick=@Game.Close>Quit</a>
 
     </div>
 
@@ -42,21 +31,7 @@
 
 @code
 {
-    public async Task OnClickCreateGame()
-    {
-        if (Game.Menu.Lobby is null)
-        {
-            var maxPlayers = Game.Menu.Package.GetMeta<int>("MaxPlayers", 1); ;
-            await Game.Menu.CreateLobbyAsync(maxPlayers);
-            Game.Menu.Lobby.Map = "thieves.dolls";
-        }
-
-        this.Navigate("/create");
-    }
-
-    void LeaveGame()
-    {
-        Game.Menu.LeaveServer("Leaving");
-    }
+    public Task OnClickCreateGame() => Task.CompletedTask;
+    void LeaveGame() { }
 }
 

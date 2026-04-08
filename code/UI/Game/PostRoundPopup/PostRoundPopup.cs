@@ -13,7 +13,7 @@ public partial class PostRoundPopup : Panel
 	[TTTEvent.Round.End]
 	private static void DisplayWinner( Team winningTeam, WinType winType )
 	{
-		Game.RootPanel?.AddChild( new PostRoundPopup() { WinningTeam = winningTeam, WinType = winType } );
+		Hud.Instance?.AddChild( new PostRoundPopup() { WinningTeam = winningTeam, WinType = winType } );
 	}
 
 	[TTTEvent.Round.Start]

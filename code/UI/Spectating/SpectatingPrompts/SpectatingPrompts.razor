@@ -47,7 +47,7 @@
 			<div class="report-panel background-color-primary rounded">
 				<span class="report-title">Report Last Killer</span>
 				<span>@attacker.SteamName (@attacker.Role.Title)</span>
-				<Sandbox.UI.TextEntry @bind-Value=@ReportReason class="report-entry" />
+				<Sandbox.UI.TextEntry Value=@ReportReason class="report-entry" />
 				<button class="alt @(HasSubmittedReport ? "inactive" : "")" icon="report" @onclick=@SubmitRdmReport>
 					@(HasSubmittedReport ? "Report Submitted" : "Submit RDM Report")
 				</button>

@@ -10,9 +10,8 @@
 </root>
 
 @code {
-    public VoiceChatIndicator(Player player)
+    public VoiceChatIndicator(Player player) : base(Sandbox.Game.ActiveScene.SceneWorld)
     {
-        this.SceneObject.Flags.ViewModelLayer = true;
         this.Enabled(player != Player.Local);
     }
 }

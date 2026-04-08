@@ -42,8 +42,12 @@ public partial class InProgress : BaseState
 
 		if ( player.Role is Traitor )
 			GivePlayersCredits<Detective>( GameManager.DetectiveTraitorDeathReward );
-		else if ( player.Role is Detective && player.LastAttacker is Player attacker && attacker.IsAlive && attacker.Team == Team.Traitors )
-			GiveTraitorCredits( attacker );
+		else if ( player.Role is Detective )
+		{
+			var attacker = player.LastAttacker?.Components.Get<Player>( FindMode.InSelf );
+			if ( attacker is not null && attacker.IsAlive && attacker.Team == Team.Traitors )
+				GiveTraitorCredits( attacker );
+		}
 
 		AlivePlayers.Remove( player );
 		Spectators.Add( player );
@@ -145,7 +149,6 @@ public partial class InProgress : BaseState
 		{
 			player.Credits += credits;
 			UI.InfoFeed.AddRoleEntry(
-				player,
 				GameResource.GetInfo<RoleInfo>( typeof( T ) ),
 				$"You have been awarded {credits} credits for your performance."
 			);

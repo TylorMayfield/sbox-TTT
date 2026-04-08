@@ -30,8 +30,11 @@ public class Cigar : Carriable
 		var attachment = WorldRenderer?.GetAttachment( "muzzle" );
 		if ( attachment.HasValue )
 		{
-			SceneParticles.PlayInstant( Scene, "particles/cigar/smokepuff", attachment.Value );
-			SceneParticles.PlayInstant( Scene, "particles/muzzle/barrel_smoke", attachment.Value );
+			var smokePuff = new SceneParticles( Scene.SceneWorld, "particles/cigar/smokepuff" );
+			smokePuff?.SetControlPoint( 0, attachment.Value.Position );
+
+			var barrelSmoke = new SceneParticles( Scene.SceneWorld, "particles/muzzle/barrel_smoke" );
+			barrelSmoke?.SetControlPoint( 0, attachment.Value.Position );
 		}
 
 		if ( Networking.IsHost )

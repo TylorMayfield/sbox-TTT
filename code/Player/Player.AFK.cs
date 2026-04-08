@@ -17,7 +17,6 @@ public partial class Player
 	{
 		if ( _isHandlingAfkPunishment )
 		{
-			Input.StopProcessing = true;
 			return;
 		}
 
@@ -129,15 +128,15 @@ public partial class Player
 		{
 			Renderer.Set( "b_attack", true );
 			CharController.Punch( Vector3.Up * 320f );
-			SceneParticles.PlayInstant( Scene, "particles/discombobulator/explode.vpcf", Transform.World.WithPosition( WorldPosition + Vector3.Up * 32f ) );
 			Sound.Play( "discombobulator_explode-1", WorldPosition );
 			UI.TextChat.AddInfoEntry( $"{SteamName} was claimed by the idle gods." );
 
 			await GameTask.DelaySeconds( 0.35f );
 
-			if ( IsValid() && IsAlive )
+			if ( IsValid && IsAlive )
 			{
-				var damage = DamageInfo.Generic( float.MaxValue )
+				var damage = new DamageInfo()
+					.WithDamage( float.MaxValue )
 					.WithAttacker( this )
 					.WithTag( DamageTags.Silent );
 				damage = damage.WithTag( DamageTags.Explode );
@@ -166,7 +165,7 @@ public partial class Player
 			if ( kickDelay > 0f )
 				await GameTask.DelaySeconds( kickDelay );
 
-			owner.Kick();
+			owner.Kick( "Removed for being AFK." );
 		}
 
 		ResetAfkTracking();

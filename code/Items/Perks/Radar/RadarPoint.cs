@@ -10,6 +10,7 @@ public partial class RadarPoint : Sandbox.UI.WorldPanel
 	private Vector3 _screenPos;
 
 	public RadarPoint( RadarPointData data )
+		: base( Sandbox.Game.ActiveScene.SceneWorld )
 	{
 		if ( WorldPoints.Instance is null )
 			return;
